@@ -1,0 +1,1 @@
+{"name":"paseo-conversation-folders-sidebar","private":true,"version":"0.2.0-beta.1","scripts":{"typecheck":"tsc --noEmit"},"devDependencies":{"@getpaseo/plugin":"0.16.0-beta.1"}}
