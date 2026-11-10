@@ -1,0 +1,22 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const ts = require('typescript');
+test('workspace panel only; no sidebar/screen injection; workspace action and cleanup', () => {
+  const source = fs.readFileSync(require.resolve('../index.client.tsx'), 'utf8');
+  const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
+  const mod = { exports: {} }, registrations = [], removed = [];
+  new Function('require', 'exports', code)(name => { assert.equal(name, './client/conversation-panel'); return { ConversationPanel: 'Panel' }; }, mod.exports);
+  const client = Object.fromEntries(['addWorkspacePanel', 'addCommandCenterItem', 'addSlashCommand'].map(method => [method, contribution => { registrations.push({ method, contribution }); return () => removed.push(contribution.id); }]));
+  const cleanup = mod.exports.default(client);
+  assert.equal(registrations.length, 3);
+  assert.equal(registrations[0].contribution.Component, 'Panel');
+  assert.deepEqual(registrations[0].contribution.locations, ['workspace', 'explorer']);
+  assert.equal(registrations[1].contribution.context, 'workspace');
+  let opened; registrations[1].contribution.onSelect({ openPanel: (...args) => { opened = args; } });
+  assert.deepEqual(opened, ['organizer', { location: 'workspace' }]);
+  assert.equal(registrations[2].contribution.name, 'folders');
+  registrations[2].contribution.onSubmit({ openPanel: (...args) => { opened = args; } });
+  assert.deepEqual(opened, ['organizer', { location: 'workspace' }]);
+  cleanup(); assert.equal(removed.length, 3);
+});
