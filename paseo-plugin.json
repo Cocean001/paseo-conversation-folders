@@ -10,8 +10,5 @@
       "name": "对话文件夹",
       "description": "用可折叠文件夹整理 Paseo 对话，并按主机隔离保存。"
     }
-  },
-  "media": [
-    "assets/conversation-folders.png"
-  ]
+  }
 }
