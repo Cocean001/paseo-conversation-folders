@@ -16,7 +16,7 @@
     "zod": "^4.4.3"
   },
   "license": "MIT",
-  "description": "Organize Paseo conversations into collapsible folders with host-isolated storage.",
+  "description": "Organize existing Paseo conversations with folders, custom tabs, project grouping, and filters.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Cocean001/paseo-conversation-folders.git"
@@ -29,6 +29,7 @@
     "index.server.ts",
     "client/",
     "shared/",
-    "assets/"
+    "assets/",
+    "server/"
   ]
 }

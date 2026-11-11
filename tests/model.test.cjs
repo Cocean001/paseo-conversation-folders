@@ -16,3 +16,11 @@ test('move group', () => { assert.deepEqual(moveGroup(initial(), 'b', 'a').group
 test('delete group keeps all conversations in ungrouped', () => { const next = removeGroup(initial(), 'a'); assert.deepEqual(next.ungroupedOrder, ['4', '1', '2']); assert.equal(next.groups.length, 1); });
 test('sort manual order, filter stale entries, include new arrivals', () => { assert.deepEqual(orderedIds(['a', 'b', 'c'], ['stale', 'b', 'b']), ['b', 'a', 'c']); });
 test('mode change does not change memberships', () => { const s = initial(); assert.deepEqual({ ...s, mode: 'dividers' }.groups, s.groups); });
+
+test('cross-host identities preserve colliding agent IDs and reorder by both host and ID',()=>{
+ const {memberId,memberRef,applyAssignments}=moduleObject.exports;const s={mode:'folders',groups:[{id:'f',name:'Shared',agentIds:['same']}],ungroupedOrder:[]};
+ const remote=memberId('local','remote','same');assert.deepEqual(memberRef('local',remote),{hostId:'remote',agentId:'same'});
+ const next=applyAssignments(s,'local',[{hostId:'remote',agentId:'same',folderHostId:'local',groupId:'f',beforeId:'same',beforeHostId:'local'}]);assert.deepEqual(next.groups[0].agentIds,[remote,'same']);assert.deepEqual(s.groups[0].agentIds,['same']);
+ assert.equal(applyAssignments(s,'local',[{hostId:'local',agentId:'same',folderHostId:'remote',groupId:'other'}]).groups[0].agentIds.length,0);
+ assert.deepEqual(applyAssignments(s,'local',[{hostId:'local',agentId:'same',folderHostId:'local',groupId:'deleted'}]).groups[0].agentIds,['same']);
+});

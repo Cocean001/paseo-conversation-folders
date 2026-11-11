@@ -6,7 +6,7 @@ test('registers the conversation folders sidebar view', () => {
   const source = fs.readFileSync(require.resolve('../index.client.tsx'), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
   const mod = { exports: {} }, registrations = [], removed = [];
-  new Function('require', 'exports', code)(name => { assert.equal(name, './client/sidebar'); return { FolderSidebar: 'Sidebar' }; }, mod.exports);
+  new Function('require', 'exports', code)(name => { assert.equal(name, './client/sidebar'); return { SidebarWithTabs: 'Sidebar' }; }, mod.exports);
   const client = { addSidebarView: contribution => { registrations.push(contribution); return () => removed.push(contribution.id); } };
   const cleanup = mod.exports.default(client);
   assert.equal(registrations.length, 1);

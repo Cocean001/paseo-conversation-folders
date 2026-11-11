@@ -4,11 +4,20 @@
   "requirements": {
     "paseo": ">=0.16.0-beta.1 <0.17.0"
   },
-  "description": "Organize Paseo conversations into collapsible folders with host-isolated storage.",
+  "description": "Organize existing Paseo conversations with folders, custom tabs, project grouping, and filters.",
   "translations": {
     "zh-CN": {
       "name": "对话文件夹",
-      "description": "用可折叠文件夹整理 Paseo 对话，并按主机隔离保存。"
+      "description": "用文件夹、自定义标签页、项目分组与筛选整理已有 Paseo 对话。"
     }
-  }
+  },
+  "media": [
+    "assets/sidebar.png",
+    "assets/conversation-hover.png",
+    "assets/conversation-menu.png",
+    "assets/loading-options.png",
+    "assets/project-appearance.png",
+    "assets/custom-tabs.png",
+    "assets/custom-tabs-compact.png"
+  ]
 }
