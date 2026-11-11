@@ -10,14 +10,5 @@
       "name": "对话文件夹",
       "description": "用文件夹、自定义标签页、项目分组与筛选整理已有 Paseo 对话。"
     }
-  },
-  "media": [
-    "assets/sidebar.png",
-    "assets/conversation-hover.png",
-    "assets/conversation-menu.png",
-    "assets/loading-options.png",
-    "assets/project-appearance.png",
-    "assets/custom-tabs.png",
-    "assets/custom-tabs-compact.png"
-  ]
+  }
 }
