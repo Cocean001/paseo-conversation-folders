@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Modal, ScrollView, Text, View } from 'react-native';
+import { Animated, Modal, Platform, ScrollView, Text, View, type ViewProps } from 'react-native';
 import { useAgent, useAgents, useHosts, useRpc, useSettings, type AgentRef, type PluginSidebarViewProps } from '@getpaseo/plugin/client';
 import { TextInput } from '@getpaseo/plugin/client/ui';
 import { sidebarTabs } from '../shared/settings';
@@ -7,7 +7,7 @@ import { hostContext } from '../shared/host-context';
 import { memberRef, type Organization } from '../shared/model';
 import { addTabMembers, closeSidebarTab, createSidebarTab, reopenSidebarTab, selectTabMembers, updateSidebarTab, type SidebarTab, type SidebarTabs, type TabMember } from '../shared/sidebar-tabs';
 import { DropdownMenu, type DropdownAnchor, type DropdownItem } from './dropdown-menu';
-import { FeedbackPressable, Glyph } from './visuals';
+import { FeedbackPressable, Glyph, useMotion } from './visuals';
 
 export interface SidebarTabControls { enabled:boolean; saving:boolean; items:DropdownItem[] }
 export interface SidebarTabScope {
@@ -27,6 +27,24 @@ function MemberChoice({ reference, checked, disabled, view, toggle }: { referenc
     {checked && <Glyph name="check" color={view.theme.colors.foreground} />}
   </FeedbackPressable>;
 }
+/** Label and close share one hover surface without merging their click targets. */
+export function SidebarTabSurface({ selected, disabled, view, children, onLayout, limited = false }: { selected: boolean; disabled: boolean; view: PluginSidebarViewProps; children: ReactNode; onLayout?: ViewProps['onLayout']; limited?: boolean }) {
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const highlight = useMotion(selected || !disabled && (hovered || focused) ? 1 : 0);
+  return <View onLayout={onLayout}
+    onPointerEnter={event => { if (event.nativeEvent.pointerType !== 'touch') setHovered(true); }}
+    onPointerLeave={() => setHovered(false)}
+    {...(Platform.OS === 'web' ? {
+      onFocus: (event: import('react-native').FocusEvent) => { const target = event.target as unknown as { matches?: (selector: string) => boolean }; setFocused(!!target?.matches?.(':focus-visible')); },
+      onBlur: (event: import('react-native').BlurEvent) => { const browserEvent = event as unknown as { currentTarget: { contains(node: unknown): boolean }; relatedTarget: unknown }; if (!browserEvent.currentTarget.contains(browserEvent.relatedTarget)) setFocused(false); },
+    } : {})}
+    style={{ flexDirection: 'row', alignItems: 'stretch', flexShrink: 0, minWidth: 0, borderRadius: 5, backgroundColor: 'transparent', ...(limited ? { maxWidth: 160 } : {}) }}>
+    <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, borderRadius: 5, backgroundColor: selected ? view.theme.colors.surface2 : view.theme.colors.surface1, opacity: highlight }} />
+    {children}
+  </View>;
+}
+
 /** All retains the original organization; custom tabs store independent views of existing chats. */
 export function SidebarTabsView({ view, children }: {view:PluginSidebarViewProps; children(scope:SidebarTabScope|undefined, controls:SidebarTabControls):ReactNode}) {
   const settings = useSettings(sidebarTabs);
@@ -85,11 +103,13 @@ export function SidebarTabsView({ view, children }: {view:PluginSidebarViewProps
   return <View style={{flex:1,minWidth:0}}>
     {state.enabled&&<View style={{flexDirection:'row',alignItems:'center',gap:2,paddingHorizontal:8,paddingTop:4,minWidth:0}}>
       {<ScrollView ref={tabScroll} horizontal accessibilityLabel="Custom tabs" showsHorizontalScrollIndicator={false} style={{flex:1,minWidth:0,flexGrow:1}} contentContainerStyle={{alignItems:'center',gap:2}}>
-        <FeedbackPressable theme={view.theme} accessibilityRole="tab" accessibilityLabel="Select tab All" accessibilityState={{selected:!active,disabled}} disabled={disabled} onPress={()=>{void save({...state,activeId:'all'})}} style={{minHeight:view.layout.compact?44:30,paddingHorizontal:10,justifyContent:'center',backgroundColor:!active?c.surface2:undefined}}><Text style={{color:!active?c.foreground:c.foregroundMuted,fontSize:12}}>All</Text></FeedbackPressable>
-        {state.tabs.filter(tab=>tab.open).map(tab=><View key={tab.id} onLayout={event=>{tabPositions.current[tab.id]=event.nativeEvent.layout.x;if(active?.id===tab.id)tabScroll.current?.scrollTo({x:Math.max(0,event.nativeEvent.layout.x-24),animated:false})}} style={{flexDirection:'row',alignItems:'center',borderRadius:5,backgroundColor:active?.id===tab.id?c.surface2:undefined,maxWidth:160}}>
-          <FeedbackPressable theme={view.theme} accessibilityRole="tab" accessibilityLabel={`Select tab ${tab.name}`} accessibilityState={{selected:active?.id===tab.id,disabled}} disabled={disabled} onPress={()=>{void save({...state,activeId:tab.id})}} style={{minHeight:view.layout.compact?44:30,paddingLeft:10,paddingRight:4,justifyContent:'center',flexShrink:1}}><Text numberOfLines={1} style={{color:active?.id===tab.id?c.foreground:c.foregroundMuted,fontSize:12}}>{tab.name}</Text></FeedbackPressable>
-          <FeedbackPressable theme={view.theme} accessibilityRole="button" accessibilityLabel={`Close tab ${tab.name}`} disabled={disabled} onPress={()=>{void save(closeSidebarTab(state,tab.id))}} style={{width:view.layout.compact?32:24,minHeight:view.layout.compact?44:30,alignItems:'center',justifyContent:'center'}}><Glyph name="close" size={11} color={c.foregroundMuted}/></FeedbackPressable>
-        </View>)}
+        <SidebarTabSurface selected={!active} disabled={disabled} view={view}>
+          <FeedbackPressable theme={view.theme} hoverBackground="transparent" accessibilityRole="tab" accessibilityLabel="Select tab All" accessibilityState={{selected:!active,disabled}} disabled={disabled} onPress={()=>{void save({...state,activeId:'all'})}} style={{minHeight:view.layout.compact?44:30,paddingHorizontal:10,justifyContent:'center',backgroundColor:'transparent'}}><Text style={{color:!active?c.foreground:c.foregroundMuted,fontSize:12}}>All</Text></FeedbackPressable>
+        </SidebarTabSurface>
+        {state.tabs.filter(tab=>tab.open).map(tab=><SidebarTabSurface key={tab.id} selected={active?.id===tab.id} disabled={disabled} view={view} limited onLayout={event=>{tabPositions.current[tab.id]=event.nativeEvent.layout.x;if(active?.id===tab.id)tabScroll.current?.scrollTo({x:Math.max(0,event.nativeEvent.layout.x-24),animated:false})}}>
+          <FeedbackPressable theme={view.theme} hoverBackground="transparent" accessibilityRole="tab" accessibilityLabel={`Select tab ${tab.name}`} accessibilityState={{selected:active?.id===tab.id,disabled}} disabled={disabled} onPress={()=>{void save({...state,activeId:tab.id})}} style={{minHeight:view.layout.compact?44:30,paddingLeft:10,paddingRight:4,justifyContent:'center',minWidth:0,flexShrink:1,backgroundColor:'transparent'}}><Text numberOfLines={1} style={{color:active?.id===tab.id?c.foreground:c.foregroundMuted,fontSize:12}}>{tab.name}</Text></FeedbackPressable>
+          <FeedbackPressable theme={view.theme} hoverBackground="transparent" accessibilityRole="button" accessibilityLabel={`Close tab ${tab.name}`} disabled={disabled} onPress={()=>{void save(closeSidebarTab(state,tab.id))}} style={{width:view.layout.compact?32:24,minHeight:view.layout.compact?44:30,flexShrink:0,alignItems:'center',justifyContent:'center',backgroundColor:'transparent'}}><Glyph name="close" size={11} color={c.foregroundMuted}/></FeedbackPressable>
+        </SidebarTabSurface>)}
       </ScrollView>}
       {state.enabled&&<FeedbackPressable theme={view.theme} disabled={disabled} accessibilityRole="button" accessibilityLabel="New tab" onPress={openNew} style={{width:view.layout.compact?36:28,minHeight:view.layout.compact?44:30,justifyContent:'center',alignItems:'center'}}><Glyph name="plus" size={13} color={c.foregroundMuted}/></FeedbackPressable>}
       {active&&<FeedbackPressable theme={view.theme} disabled={disabled} accessibilityRole="button" accessibilityLabel="Choose conversations for tab" onPress={openMembers} style={{width:view.layout.compact?36:28,minHeight:view.layout.compact?44:30,justifyContent:'center',alignItems:'center'}}><Glyph name="conversations" size={13} color={c.foregroundMuted}/></FeedbackPressable>}

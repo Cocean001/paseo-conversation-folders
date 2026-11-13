@@ -22,7 +22,13 @@ export function moveGroup(state: Organization, sourceId: string, beforeId: strin
 export function removeGroup(state: Organization, id: string): Organization {
   const group = state.groups.find(g => g.id === id);
   if (!group) return state;
-  return { ...state, groups: state.groups.filter(g => g.id !== id).map(g => g.parentId === id ? { ...g, parentId: undefined } : g), ungroupedOrder: [...state.ungroupedOrder, ...group.agentIds.filter(id => !state.ungroupedOrder.includes(id))] };
+  const groups = state.groups.filter(g => g.id !== id).map(g => {
+    if (g.parentId !== id) return g;
+    const { parentId: _parentId, ...promoted } = g;
+    // A child promoted from a root-level folder stays beside the hosts.
+    return group.topLevel ? { ...promoted, topLevel: true } : promoted;
+  });
+  return { ...state, groups, ungroupedOrder: [...state.ungroupedOrder, ...group.agentIds.filter(id => !state.ungroupedOrder.includes(id))] };
 }
 export function orderedIds(ids: string[], order: string[]): string[] {
   const available = new Set(ids);
@@ -56,4 +62,38 @@ export function applyAssignments(state: Organization, folderHostId: string, assi
     next = moveAgent(next, value, assignment.groupId, assignment.beforeId ? memberId(folderHostId, assignment.beforeHostId ?? folderHostId, assignment.beforeId) : undefined);
   }
   return next;
+}
+
+
+export interface GroupPlacement { parentId: string | null; topLevel?: boolean; siblingId?: string; position?: 'before' | 'after' }
+export function canRelocateGroup(groups: readonly Group[], sourceId: string, destination: GroupPlacement): boolean {
+  const source = groups.find(group => group.id === sourceId);
+  if (!source || destination.parentId === sourceId || destination.siblingId === sourceId) return false;
+  const parent = destination.parentId === null ? null : groups.find(group => group.id === destination.parentId);
+  if (destination.parentId !== null && (!parent || parent.parentId || groups.some(group => group.parentId === sourceId))) return false;
+  if (destination.siblingId) {
+    const sibling = groups.find(group => group.id === destination.siblingId);
+    if (!sibling || (sibling.parentId ?? null) !== destination.parentId) return false;
+  }
+  return true;
+}
+export function relocateGroup(state: Organization, sourceId: string, destination: GroupPlacement): Organization {
+  if (!canRelocateGroup(state.groups, sourceId, destination)) return state;
+  const source = state.groups.find(group => group.id === sourceId)!;
+  const { parentId: _parent, topLevel: _root, ...folder } = source;
+  const moved = { ...folder, ...(destination.parentId !== null ? { parentId: destination.parentId } : destination.topLevel ? { topLevel: true } : {}) };
+  const groups = state.groups.filter(group => group.id !== sourceId);
+  const index = destination.siblingId ? groups.findIndex(group => group.id === destination.siblingId) : -1;
+  groups.splice(index < 0 ? groups.length : index + (destination.position === 'after' ? 1 : 0), 0, moved);
+  return { ...state, groups };
+}
+
+/** Expand native project members for display; keep the saved organization unchanged. */
+export function withProjectMembers(state: Organization, hostId: string, projects: readonly { key: string; workspaceKeys: readonly string[] }[], agents: readonly { hostId: string; id: string; workspace?: { key: string } }[], assignments: readonly FolderAssignment[]): Organization {
+  return { ...state, groups: state.groups.map(group => {
+    if (!group.projectKey) return group;
+    const keys = projects.find(project => project.key === group.projectKey)?.workspaceKeys ?? [];
+    const native = agents.filter(agent => agent.hostId === hostId && agent.workspace && keys.includes(agent.workspace.key) && !assignments.some(assignment => assignment.hostId === agent.hostId && assignment.agentId === agent.id && (assignment.folderHostId !== hostId || assignment.groupId !== group.id) && assignment.groupId !== null) && !state.groups.some(other => other.id !== group.id && containsMember(other.agentIds, hostId, agent.hostId, agent.id))).map(agent => memberId(hostId, agent.hostId, agent.id));
+    return { ...group, agentIds: [...new Set([...group.agentIds, ...native])] };
+  }) };
 }

@@ -32,3 +32,9 @@ export function showConversationTooltip(element: unknown, data: {title:string; h
   browser.addEventListener('scroll',remove,true);browser.addEventListener('resize',remove);
   return () => {remove();observer.disconnect();browser.removeEventListener('scroll',remove,true);browser.removeEventListener('resize',remove);};
 }
+
+/** Native drag must suppress Pressable's delayed long-press menu. */
+export function isSidebarDragging(element: unknown): boolean {
+  if (Platform.OS !== 'web') return false;
+  return !!(element as {ownerDocument?: {querySelector(selector: string): unknown}} | null)?.ownerDocument?.querySelector('[data-paseo-sidebar-dragging="true"]');
+}

@@ -23,13 +23,14 @@
   },
   "files": [
     "paseo-plugin.json",
+    "README.md",
+    "README.zh-CN.md",
     "OVERVIEW.md",
     "OVERVIEW.*.md",
     "index.client.tsx",
     "index.server.ts",
     "client/",
     "shared/",
-    "assets/",
     "server/"
   ]
 }

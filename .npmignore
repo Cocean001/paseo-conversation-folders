@@ -1,0 +1,75 @@
+# Dependencies and generated output / 依赖与生成产物
+node_modules/
+build/
+dist/
+coverage/
+.cache/
+*.tsbuildinfo
+*.tgz
+
+# Local evidence, demo instances and screenshots / 本地验证、演示实例与截图
+/artifacts/
+/assets/
+/playwright-report/
+/test-results/
+*.log
+*.har
+*.trace
+*.bundle
+
+# Credentials and local state / 凭据与本地状态
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+credentials*.json
+secrets*.json
+.paseo/
+
+# Local assistant instructions, sessions and configuration / 本地助手指令、会话与配置
+[Aa][Gg][Ee][Nn][Tt][Ss]*.[Mm][Dd]
+[Cc][Ll][Aa][Uu][Dd][Ee]*.[Mm][Dd]
+[Gg][Ee][Mm][Ii][Nn][Ii]*.[Mm][Dd]
+.claude/
+.codex/
+.cursor/
+.gemini/
+[Ss][Kk][Ii][Ll][Ll]*.[Mm][Dd]
+.pi/
+.agents/
+.continue/
+.aider*
+.cursorrules
+.cursorignore
+.mcp.json
+mcp.json
+.opencode/
+.aider/
+.github/copilot-instructions.md
+.github/instructions/
+.github/prompts/
+prompts/
+skills/
+*.jsonl
+
+# Editor files and backups / 编辑器文件与备份
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.bak
+*.old
+
+# Repository-only files / 仅供源码仓库使用
+tests/
+.github/

@@ -1,3 +1,7 @@
+import { currentPickerTree } from '../shared/folder-picker';
+import { FolderAdd } from './folder-add';
+import { ConversationViewContext } from './conversation-view';
+import { FolderDragProvider, DragFolderRow, FolderDropTarget, type DragFolder, type FolderDestination } from './folder-drag';
 import { SidebarTabsView, type SidebarTabScope, type SidebarTabControls } from './sidebar-tabs';
 import { ConversationActions } from './conversation-actions';
 import { conversationState, aggregateStates } from '../shared/status';
@@ -11,8 +15,8 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, TextInput, View, Platform } from 'react-native';
 import { organization, hostOrganizations, displayPreferences } from '../shared/settings';
 import { hostContext } from '../shared/host-context';
-import { AutomaticTree } from './automatic-tree';
-import { removeGroup, moveGroup, memberId, memberRef, containsMember, applyAssignments } from '../shared/model';
+import { AutomaticTree, ProjectFolder } from './automatic-tree';
+import { removeGroup, relocateGroup, memberId, memberRef, containsMember, applyAssignments, withProjectMembers } from '../shared/model';
 
 // CSS transitions remain local to plugin rows; reduced-motion disables them.
 const mediaQuery = (globalThis as unknown as { matchMedia?: (query: string) => { matches: boolean } }).matchMedia;
@@ -84,6 +88,7 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
   const [draft, setDraft] = useState('');
   const [folderSaving, setFolderSaving] = useState(false);
   const [folderError, setFolderError] = useState<string | null>(null);
+  const folderRevision = useRef<{ hostId: string; revision: string } | null>(null);
   const [folderFocused, setFolderFocused] = useState(false);
   const folderInput = useRef<TextInput>(null);
   useEffect(() => { if (editing) folderInput.current?.focus(); else folderInput.current?.blur(); }, [editing]);
@@ -110,6 +115,7 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
   const onlyHost = targetHost;
   const agents = useAgents({ hosts: onlyHost ? [onlyHost] : [], where: agent => matchesConversation(agent, conversationOptions), orderBy: conversationOrder(conversationOptions) });
   const allAgents = useAgents();
+  const nativeAgents = useAgents({ groupBy: agent => agent.workspace.key });
   const stateGroups = useAgents({ where: agent => !tabScope || tabScope.tab.members.some(member => member.hostId === agent.hostId && member.agentId === agent.id), groupBy: agent => conversationState(agent) });
   const filteredAgents = useAgents({ where: agent => matchesConversation(agent, conversationOptions), orderBy: conversationOrder(conversationOptions) });
   const visible = agents;
@@ -120,7 +126,10 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
   const rawHostState = (hostId: string) => hostId === ownerHost ? settings.values : extraSettings.status === 'ready' ? extraSettings.values.hosts[hostId] ?? { mode: 'folders' as const, groups: [], ungroupedOrder: [] } : null;
   const assignments = (settings.values.assignments ?? []).filter(assignment => assignment.groupId === null || rawHostState(assignment.folderHostId)?.groups.some(group => group.id === assignment.groupId));
   const hostState = (hostId: string) => { const raw = rawHostState(hostId); return raw ? applyAssignments(raw, hostId, assignments) : null; };
+  const presentationHostState = (hostId: string) => { const raw = hostState(hostId); return raw ? withProjectMembers(raw, hostId, projects.map(project => ({ key: project.key, workspaceKeys: project.items.map(workspace => workspace.key) })), nativeAgents.flatMap(bucket => bucket.items.map(ref => ({ ...ref, workspace: { key: bucket.key } }))), assignments) : null; };
   const state = hostState(targetHost!) ?? settings.values;
+  const displayedState = presentationHostState(targetHost!) ?? state;
+  const pickerTree = currentPickerTree({ mode: options.grouping, hosts: pickedHost ? hosts.filter(host => host.serverId === pickedHost) : hosts, targetHost: targetHost!, groupsForHost: hostId => presentationHostState(hostId)?.groups ?? [], projects: projects.filter(project => (!workspaceKeys || project.items.some(workspace => workspaceKeys.includes(workspace.key))) && (!conversationOptions.members || nativeAgents.some(bucket => project.items.some(workspace => workspace.key === bucket.key) && bucket.items.some(agent => conversationOptions.members!.some(member => member.hostId === agent.hostId && member.agentId === agent.id))))).flatMap(project => project.items[0] ? [{ key: project.key, title: project.title || 'Project', hostId: project.items[0].hostId, workspaceKeys: project.items.map(workspace => workspace.key) }] : []), agents: nativeAgents.flatMap(bucket => bucket.items.filter(ref => filteredAgents.some(agent => agent.key === ref.key)).map(ref => ({hostId:ref.hostId,id:ref.id,workspace:{key:bucket.key}}))) });
   async function save(next: typeof state): Promise<boolean> {
     if (pending.current) return false;
     pending.current = true;
@@ -129,6 +138,23 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
       if (targetHost && extraSettings.status === 'ready') return await extraSettings.save({ hosts: { ...extraSettings.values.hosts, [targetHost]: next } }, extraSettings.revision);
       return false;
     } finally { pending.current = false; }
+  }
+  async function dropFolder(source: DragFolder, destination: FolderDestination): Promise<boolean> {
+    if (pending.current || settings.status !== 'ready' || source.hostId !== destination.hostId) return false;
+    const current = rawHostState(source.hostId);
+    if (!current) return false;
+    const additions = [source.project, destination.project].filter((group): group is import('../shared/model').Group => !!group && !current.groups.some(existing => existing.id === group.id || existing.projectKey === group.projectKey));
+    const prepared = { ...current, groups: [...current.groups, ...additions.filter((group,index) => additions.findIndex(other => other.id === group.id) === index)] };
+    const next = relocateGroup(prepared, source.groupId, destination);
+    if (next === prepared) { setFolderError('Folders support two levels. Move a folder without children into a top-level folder.'); return false; }
+    pending.current = true; setFolderError(null);
+    try {
+      const ok = source.hostId === ownerHost ? await settings.save(next, settings.revision) : extraSettings.status === 'ready' ? await extraSettings.save({ hosts: { ...extraSettings.values.hosts, [source.hostId]: next } }, extraSettings.revision) : false;
+      if (!ok) setFolderError('Could not move folder. Refresh and try again.');
+      if (ok && destination.parentId) setExpanded(previous => new Set([...previous, destination.parentId!]));
+      return ok;
+    } catch { setFolderError('Could not move folder. Check the server connection and try again.'); return false; }
+    finally { pending.current = false; }
   }
   async function dropConversation(source: DragConversation, destination: ConversationDestination): Promise<boolean> {
     if (pending.current || settings.status !== 'ready') return false;
@@ -156,9 +182,22 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
     } catch { setFolderError('Could not move conversation. Check the host connection.'); return false; }
     finally { pending.current = false; }
   }
-  function conversationRow(reference: AgentRef, groupId: string | null, folderHostId = reference.hostId) {
-    return <ConversationDropTarget key={reference.key} destination={{ hostId: folderHostId, groupId, beforeId: reference.id, beforeHostId: reference.hostId }} view={view}>
-      <DragConversationRow source={{ hostId: reference.hostId, agentId: reference.id }}><ConversationRow loadingColor={options.loadingColor} loadingEffect={options.loadingEffect} reference={reference} view={view} moving={options.grouping === 'manual' && selected !== null} select={setSelected} detailed={detailed} serverLabel={groupId !== null || options.showServer ? hosts.find(host => host.serverId === reference.hostId)?.label || 'Disconnected server' : undefined} /></DragConversationRow>
+  async function addConversations(sources: readonly AgentRef[], destination: ConversationDestination, revision?: string): Promise<boolean> {
+    if (pending.current || settings.status !== 'ready' || revision !== settings.revision) return false;
+    const current = rawHostState(destination.hostId);
+    if (!current || !current.groups.some(group => group.id === destination.groupId)) return false;
+    pending.current = true;
+    try {
+      const keys = new Set(sources.map(source => JSON.stringify([source.hostId, source.id])));
+      const nextAssignments = [...assignments.filter(assignment => !keys.has(JSON.stringify([assignment.hostId, assignment.agentId]))), ...sources.map(source => ({hostId:source.hostId,agentId:source.id,folderHostId:destination.hostId,groupId:destination.groupId}))];
+      const saved = await settings.save({...settings.values, assignments:nextAssignments}, settings.revision);
+      if (saved) setExpanded(previous => new Set([...previous,destination.groupId!]));
+      return saved;
+    } finally { pending.current = false; }
+  }
+  function conversationRow(reference: AgentRef, groupId: string | null, folderHostId = reference.hostId, project?: {key:string;title:string}) {
+    return <ConversationDropTarget key={reference.key} destination={{ hostId: folderHostId, groupId, beforeId: reference.id, beforeHostId: reference.hostId, ...(project ? {projectKey:project.key,projectTitle:project.title} : {}) }} view={view}>
+      <DragConversationRow source={{ hostId: reference.hostId, agentId: reference.id }}><ConversationRow loadingColor={options.loadingColor} loadingEffect={options.loadingEffect} reference={reference} view={view} moving={options.grouping === 'manual' && selected !== null} select={id => setSelected(memberId(targetHost!, reference.hostId, id))} detailed={detailed} serverLabel={groupId !== null || options.showServer ? hosts.find(host => host.serverId === reference.hostId)?.label || 'Disconnected server' : undefined} /></DragConversationRow>
     </ConversationDropTarget>;
   }
   async function createHostFolder(hostId: string, name: string) {
@@ -190,13 +229,17 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
     }
     setParentId(action === 'child' ? group.id : undefined);
     setRenaming(action === 'rename' ? group.id : null);
+    folderRevision.current = { hostId, revision: (hostId === ownerHost && settings.status === 'ready' ? settings.revision : extraSettings.status === 'ready' ? extraSettings.revision : '') };
     setDraft(action === 'rename' ? group.name : ''); setEditing(true);
   }
-  const assigned = new Set(hosts.flatMap(host => (hostState(host.serverId)?.groups ?? []).flatMap(group => group.agentIds.map(id => { const ref = memberRef(host.serverId, id); return `${ref.hostId}:${ref.agentId}`; }))));
+  const assigned = new Set(hosts.flatMap(host => (presentationHostState(host.serverId)?.groups ?? []).flatMap(group => group.agentIds.map(id => { const ref = memberRef(host.serverId, id); return `${ref.hostId}:${ref.agentId}`; }))));
   function toggle(id: string) { setExpanded(previous => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next; }); }
-  function closeFolderEditor() { if (!folderSaving) { setEditing(false); setRenaming(null); setFolderError(null); } }
+  function rememberFolderRevision() { folderRevision.current = { hostId: targetHost!, revision: targetHost === ownerHost && settings.status === 'ready' ? settings.revision : extraSettings.status === 'ready' ? extraSettings.revision : '' }; }
+  function closeFolderEditor() { if (!folderSaving) { folderRevision.current = null; setEditing(false); setRenaming(null); setFolderError(null); } }
   async function create() {
     const name = draft.trim(); if (!editing || !name || pending.current || folderSaving || settings.status !== 'ready') return;
+    const revision = targetHost === ownerHost ? settings.revision : extraSettings.status === 'ready' ? extraSettings.revision : '';
+    if (!folderRevision.current || folderRevision.current.hostId !== targetHost || folderRevision.current.revision !== revision) { setFolderError('Folders changed on another client. Cancel and reopen this editor before saving.'); return; }
     setFolderSaving(true); setFolderError(null);
     try {
       const id = `group-${Date.now().toString(36)}`;
@@ -252,13 +295,13 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
     ] },
     ...(options.grouping === 'manual' ? [{ id: 'organize', label: 'Organize conversations…', separatorBefore: true, onSelect: () => { setSelected(''); setShowOptions(false); } }] : []),
   ];
-  return <ConversationDragProvider move={dropConversation}><ScrollView style={{ flex: 1, minWidth: 0, width: '100%', backgroundColor: c.surface0 }} contentContainerStyle={{ padding: 8, gap: 2, minWidth: 0 }}>
-    <View style={{ flexDirection: 'row', alignItems: 'center', minWidth: 0 }}>
+  return <FolderDragProvider groups={hostId => rawHostState(hostId)?.groups ?? []} move={dropFolder}><ConversationDragProvider move={dropConversation}><ScrollView style={{ flex: 1, minWidth: 0, width: '100%', backgroundColor: c.surface0 }} contentContainerStyle={{ padding: 8, gap: 2, minWidth: 0 }}>
+    <FolderDropTarget hostId={targetHost!} root anyHost view={view}><View style={{ flexDirection: 'row', alignItems: 'center', minWidth: 0 }}>
       <Text style={{ flex: 1, color: c.foreground, fontSize: 12, fontWeight: '600', paddingLeft: 8 }}>{tabScope?.tab.name || 'Conversations'}</Text>
-      <Pressable theme={view.theme} accessibilityRole="button" accessibilityLabel={editing ? 'Cancel' : 'New folder'} accessibilityState={{ expanded: editing, disabled: folderSaving }} disabled={folderSaving} onPress={() => { if (editing) closeFolderEditor(); else { setParentId(undefined); setRenaming(null); setDraft(''); setFolderError(null); setEditing(true); } }} style={{ width: view.layout.compact ? 44 : 32, height: view.layout.compact ? 44 : 32, alignItems: 'center', justifyContent: 'center' }}><Glyph name={editing ? 'close' : 'plus'} color={c.foregroundMuted} /></Pressable>
+      <Pressable theme={view.theme} accessibilityRole="button" accessibilityLabel={editing ? 'Cancel' : 'New folder'} accessibilityState={{ expanded: editing, disabled: folderSaving }} disabled={folderSaving} onPress={() => { if (editing) closeFolderEditor(); else { rememberFolderRevision(); setParentId(undefined); setRenaming(null); setDraft(''); setFolderError(null); setEditing(true); } }} style={{ width: view.layout.compact ? 44 : 32, height: view.layout.compact ? 44 : 32, alignItems: 'center', justifyContent: 'center' }}><Glyph name={editing ? 'close' : 'plus'} color={c.foregroundMuted} /></Pressable>
       <Pressable theme={view.theme} accessibilityRole="button" accessibilityLabel={allCollapsed ? "Restore expansion" : "Collapse all"} accessibilityHint={allCollapsed ? "Restore branches to their previous expansion state" : "Collapse all folders, projects and servers"} onPress={() => { if (allCollapsed) setExpanded(new Set(expandedBeforeCollapse.current)); else { expandedBeforeCollapse.current = new Set(expanded); setExpanded(new Set()); } setAllCollapsed(value => !value); setCollapseVersion(value => value + 1); setMenu(null); setPicker(null); }} style={{ width: view.layout.compact ? 44 : 32, height: view.layout.compact ? 44 : 32, alignItems: 'center', justifyContent: 'center' }}><Glyph name={allCollapsed ? "expand" : "collapse"} color={c.foregroundMuted} /></Pressable>
       <Pressable theme={view.theme} accessibilityRole="button" accessibilityLabel="Filter" accessibilityHint="Grouping, sorting, search and filters" focusRef={optionsButton} accessibilityState={{ expanded: showOptions }} onPress={() => setShowOptions(v => !v)} style={{ width: view.layout.compact ? 44 : 32, height: view.layout.compact ? 44 : 32, alignItems: 'center', justifyContent: 'center' }}><Glyph name="settings" color={c.foregroundMuted} />{filtersActive && <View style={{ position: 'absolute', top: 5, right: 5, width: 4, height: 4, borderRadius: 2, backgroundColor: c.accent || c.foreground }} />}</Pressable>
-    </View>
+    </View></FolderDropTarget>
     {selected !== null && button('Done', () => setSelected(null))}
     <DropdownMenu anchor={optionsAnchor} close={() => setShowOptions(false)} view={view} busy={savingPreferences || view.tabControls?.saving || preferences.status !== 'ready'} error={preferenceError} header={searchHeader} items={viewMenu} />
     {options.showTabs !== false && hosts.length > 0 && <ScrollView horizontal showsHorizontalScrollIndicator={false} accessibilityLabel="Server tabs" contentContainerStyle={{ flexDirection: 'row', gap: 2, paddingHorizontal: 4 }} style={{ flexGrow: 0, minWidth: 0 }}>
@@ -277,38 +320,40 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
     {folderError && <Text accessibilityRole="alert" style={{ marginHorizontal: 8, marginBottom: 6, color: c.statusDanger, fontSize: 11, lineHeight: 16 }}>{folderError}</Text>}
     {selected && <Text style={{ color: c.foregroundMuted, fontSize: 11, padding: 8 }}>Choose a folder for the selected conversation</Text>}
     <Transition identity={`${options.grouping}:${targetHost}:${options.showTabs}`}>
-    {options.grouping !== 'manual' && <AutomaticTree assignedConversations={assigned} conversationOptions={conversationOptions} unfiledOrder={hostId => hostState(hostId)?.ungroupedOrder ?? []} folderAction={folderAction} createFolder={createHostFolder} foldersForHost={hostId => hostState(hostId)?.groups ?? []} mode={options.grouping} hosts={pickedHost ? hosts.filter(host => host.serverId === pickedHost) : hosts} view={view} row={conversationRow} />}
-    {options.grouping === 'manual' && [...state.groups.filter(g => !g.parentId).flatMap(g => [g, ...(expanded.has(g.id) ? state.groups.filter(child => child.parentId === g.id) : [])]), { id: 'ungrouped', name: 'Unfiled', agentIds: visible.filter(a => !assigned.has(`${a.hostId}:${a.id}`)).map(a => a.id) }].map(group => {
+    {options.grouping !== 'manual' && <AutomaticTree pickerTree={pickerTree} addConversations={addConversations} revision={settings.revision} assignedConversations={assigned} conversationOptions={conversationOptions} unfiledOrder={hostId => hostState(hostId)?.ungroupedOrder ?? []} folderAction={folderAction} createFolder={createHostFolder} foldersForHost={hostId => presentationHostState(hostId)?.groups ?? []} mode={options.grouping} hosts={pickedHost ? hosts.filter(host => host.serverId === pickedHost) : hosts} view={view} row={conversationRow} />}
+    {options.grouping === 'manual' && [...state.groups.filter(g => !g.parentId).flatMap(g => [g, ...(!g.projectKey && expanded.has(g.id) ? state.groups.filter(child => child.parentId === g.id) : [])]), { id: 'ungrouped', name: 'Unfiled', agentIds: visible.filter(a => !assigned.has(`${a.hostId}:${a.id}`)).map(a => a.id) }].map(group => {
+      if ('projectKey' in group && group.projectKey) return <ProjectFolder key={group.id} group={group} groups={state.groups} hostId={targetHost!} view={view} row={conversationRow} folderAction={folderAction} pickerTree={pickerTree} addConversations={addConversations} revision={settings.revision} options={conversationOptions} chooseDestination={selected ? destination => { const source = memberRef(targetHost!, selected); void dropConversation({hostId:source.hostId,agentId:source.agentId}, destination).then(ok => { if(ok) setSelected(null); }); } : undefined} foldersForHost={hostId => presentationHostState(hostId)?.groups ?? []} />;
+      const displayGroup = displayedState.groups.find(candidate => candidate.id === group.id) ?? group;
       const sourceIds = group.id === 'ungrouped' ? [...new Set([...state.ungroupedOrder, ...group.agentIds])] : group.agentIds;
       const memberAgents = filteredAgents.filter(agent => containsMember(group.agentIds, targetHost!, agent.hostId, agent.id));
       const rows = conversationOptions.sortBy === 'manual' ? sourceIds.flatMap(id => { const member = memberRef(targetHost!, id); return memberAgents.filter(agent => agent.id === member.agentId && agent.hostId === member.hostId); }) : memberAgents;
       const open = expanded.has(group.id);
-      const members = [...group.agentIds, ...state.groups.filter(child => child.parentId === group.id).flatMap(child => child.agentIds)];
+      const members = [...displayGroup.agentIds, ...displayedState.groups.filter(child => child.parentId === group.id).flatMap(child => child.agentIds)];
       const folderStatus = aggregateStates(stateGroups.filter(bucket => bucket.items.some(agent => containsMember(members, targetHost!, agent.hostId, agent.id))).map(bucket => bucket.key));
       return <FolderArrival key={group.id} fresh={group.id === freshFolderId}><View style={{ minWidth: 0, marginLeft: 'parentId' in group && group.parentId ? 12 : 0 }}>
-        <ConversationDropTarget destination={{ hostId: targetHost!, groupId: group.id === 'ungrouped' ? null : group.id }} view={view} activate={() => setExpanded(previous => new Set([...previous, group.id]))}><View style={{ ...feedback, flexDirection: 'row', alignItems: 'center', borderRadius: 8, backgroundColor: c.surface1 }}>
-        <Pressable theme={view.theme} accessibilityRole="button" accessibilityLabel={`Folder ${group.name}`} accessibilityState={{ expanded: open }} onPress={() => { if (selected) void dropConversation({hostId:targetHost!,agentId:selected},{hostId:targetHost!,groupId:group.id === 'ungrouped' ? null : group.id}).then(ok => { if (ok) setSelected(null); }); else toggle(group.id); }} style={({ pressed }) => ({ minHeight: view.layout.compact ? 44 : 36, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, borderRadius: 8, flex: 1, minWidth: 0, backgroundColor: pressed ? c.surface2 : 'transparent', borderWidth: 1, borderColor: 'transparent' })}>
+        <FolderDropTarget hostId={targetHost!} group={group.id === 'ungrouped' ? undefined : group} root={group.id === 'ungrouped'} view={view} activate={() => setExpanded(previous => new Set([...previous, group.id]))}><DragFolderRow disabled={group.id === 'ungrouped'} source={{hostId:targetHost!,groupId:group.id}}><ConversationDropTarget destination={{ hostId: targetHost!, groupId: group.id === 'ungrouped' ? null : group.id }} view={view} activate={() => setExpanded(previous => new Set([...previous, group.id]))}><View style={{ ...feedback, flexDirection: 'row', alignItems: 'center', borderRadius: 8, backgroundColor: c.surface1 }}>
+        <Pressable theme={view.theme} accessibilityRole="button" accessibilityLabel={`Folder ${group.name}`} accessibilityState={{ expanded: open }} onPress={() => { if (selected) void dropConversation((() => {const source=memberRef(targetHost!,selected);return {hostId:source.hostId,agentId:source.agentId};})(),{hostId:targetHost!,groupId:group.id === 'ungrouped' ? null : group.id}).then(ok => { if (ok) setSelected(null); }); else toggle(group.id); }} style={({ pressed }) => ({ minHeight: view.layout.compact ? 44 : 36, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, borderRadius: 8, flex: 1, minWidth: 0, backgroundColor: pressed ? c.surface2 : 'transparent', borderWidth: 1, borderColor: 'transparent' })}>
           <Disclosure open={open} color={c.foregroundMuted} /><BranchIcon loadingColor={options.loadingColor} loadingEffect={options.loadingEffect} state={folderStatus.state} hasUpdates={folderStatus.hasUpdates} open={open} icon="folder" theme={view.theme} /><Text numberOfLines={1} style={{ color: c.foreground, fontSize: 12, fontWeight: '600', flex: 1 }}>{group.name}</Text><Text style={{ color: c.foregroundMuted, fontSize: 11 }}>{rows.length}</Text>
         </Pressable>
-        {group.id !== 'ungrouped' && <>{button(`＋`, () => { setPicker(picker === group.id ? null : group.id); setMenu(null); })}{button('⋮', () => { setMenu(menu === group.id ? null : group.id); setPicker(null); })}</>}
-        </View></ConversationDropTarget>
+        {group.id !== 'ungrouped' && <><ConversationViewContext.Provider value={{options:conversationOptions,pickerTree,foldersForHost:hostId=>presentationHostState(hostId)?.groups??[],unfiledOrder:()=>[],addConversations,revision:settings.revision}}><FolderAdd hostId={targetHost!} group={group} view={view} /></ConversationViewContext.Provider>{button('⋮', () => { setMenu(menu === group.id ? null : group.id); setPicker(null); })}</>}
+        </View></ConversationDropTarget></DragFolderRow></FolderDropTarget>
         <Reveal open={menu === group.id}><View style={{ flexDirection: 'row', flexWrap: 'wrap', padding: 4, backgroundColor: c.surface1 }}>
-          {!('parentId' in group && group.parentId) && button('New subfolder', () => { setParentId(group.id); setRenaming(null); setDraft(''); setFolderError(null); setEditing(true); setMenu(null); })}
-          {button('Rename', () => { setRenaming(group.id); setDraft(group.name); setFolderError(null); setEditing(true); setMenu(null); })}
-          {button('Move up', () => { const index = state.groups.findIndex(g => g.id === group.id); if (index > 0) void save(moveGroup(state, group.id, state.groups[index - 1].id)); })}
-          {button('Delete folder', () => { void save(removeGroup(state, group.id)); setMenu(null); })}
+          {!('parentId' in group && group.parentId) && button('New subfolder', () => { rememberFolderRevision(); setParentId(group.id); setRenaming(null); setDraft(''); setFolderError(null); setEditing(true); setMenu(null); })}
+          {button('Rename', () => { rememberFolderRevision(); setRenaming(group.id); setDraft(group.name); setFolderError(null); setEditing(true); setMenu(null); })}
+          {button('Move up', () => { const siblings = state.groups.filter(candidate => (candidate.parentId ?? null) === ('parentId' in group ? group.parentId ?? null : null) && !!candidate.topLevel === !!('topLevel' in group && group.topLevel)); const index = siblings.findIndex(candidate => candidate.id === group.id); if (index > 0) void dropFolder({hostId:targetHost!,groupId:group.id},{hostId:targetHost!,parentId:'parentId' in group ? group.parentId ?? null : null,topLevel:!!('topLevel' in group && group.topLevel),siblingId:siblings[index - 1].id,position:'before'}); })}
+          {button('Delete folder', () => { void folderAction(targetHost!, group, 'delete'); setMenu(null); })}
         </View></Reveal>
         <Reveal open={picker === group.id}><View style={{ padding: 6, backgroundColor: c.surface1 }}>
           <Text style={{ color: c.foregroundMuted, fontSize: 11, padding: 6 }}>Add conversations to this folder</Text>
           {allAgents.filter(a => !containsMember(group.agentIds,targetHost!,a.hostId,a.id)).map(reference => <AddConversation key={reference.key} reference={reference} view={view} add={() => { void dropConversation({hostId:reference.hostId,agentId:reference.id},{hostId:targetHost!,groupId:group.id}).then(ok => { if (ok) { setPicker(null); setExpanded(previous => new Set([...previous, group.id])); } }); }} />)}
           {button('Close', () => setPicker(null))}
         </View></Reveal>
-        <Reveal open={open}><ConversationDropTarget destination={{ hostId: targetHost!, groupId: group.id === 'ungrouped' ? null : group.id }} view={view}><View style={{ minHeight: view.layout.compact ? 36 : 28 }}>{rows.map(reference => conversationRow(reference, group.id === 'ungrouped' ? null : group.id, targetHost!))}{!rows.length && <Text style={{ color: c.foregroundMuted, fontSize: 10, paddingHorizontal: 12, paddingVertical: 4 }}>{search || conversationOptions.filter !== 'all' ? 'No matching conversations' : 'Drop conversations here'}</Text>}</View></ConversationDropTarget></Reveal>
+        <Reveal open={open}><FolderDropTarget hostId={targetHost!} group={group.id === 'ungrouped' ? undefined : group} root={group.id === 'ungrouped'} insideOnly view={view}><ConversationDropTarget destination={{ hostId: targetHost!, groupId: group.id === 'ungrouped' ? null : group.id }} view={view}><View style={{ minHeight: view.layout.compact ? 36 : 28 }}>{rows.map(reference => conversationRow(reference, group.id === 'ungrouped' ? null : group.id, targetHost!))}{!rows.length && <Text style={{ color: c.foregroundMuted, fontSize: 10, paddingHorizontal: 12, paddingVertical: 4 }}>{search || conversationOptions.filter !== 'all' ? 'No matching conversations' : 'Drop conversations here'}</Text>}</View></ConversationDropTarget></FolderDropTarget></Reveal>
       </View></FolderArrival>;
     })}
     </Transition>
     {(settings.saveError || extraSettings.saveError || preferences.saveError) && <Text style={{ color: c.statusDanger, padding: 8 }}>{settings.saveError || extraSettings.saveError || preferences.saveError}</Text>}
-  </ScrollView></ConversationDragProvider>;
+  </ScrollView></ConversationDragProvider></FolderDragProvider>;
 }
 
 function AddConversation({ reference, view, add }: { reference: AgentRef; view: PluginSidebarViewProps; add(): void }) {

@@ -52,3 +52,33 @@ test('disabling custom tabs preserves saved views and restores access through Fi
  const h=harness(true);await tick();h.render();h.controls().items.find(item=>item.id==='enabled').onSelect();await tick();h.render();assert.equal(h.controls().enabled,false);assert.equal(h.scope(),undefined);assert.equal(h.find('New tab'),undefined);assert.equal(h.settings.values.tabs.length,1);
  h.controls().items.find(item=>item.id==='enabled').onSelect();await tick();h.render();assert.equal(h.scope().tab.id,'work');assert.ok(h.find('New tab'));
 });
+
+test('custom tab label and close use one shared hover surface', async()=>{
+ const h=harness(true);await tick();h.render();
+ for(const label of ['Select tab All','Select tab Work','Close tab Work']) {
+  const button=h.find(label);assert.ok(button,label);assert.equal(button.props.hoverBackground,'transparent');
+ }
+ assert.equal(h.find('Close tab Work').props.style.flexShrink,0);
+});
+
+test('tab surface highlights label and close together and clears hover without losing selection',()=>{
+ let cursor=0;const states=[];const jsx=(type,props)=>({type,props:props||{}});
+ const mod=load('../client/sidebar-tabs.tsx',{
+  react:{useState(value){const i=cursor++;if(!(i in states))states[i]=value;return[states[i],next=>states[i]=next]},useEffect(){},useRef:()=>({})},
+  'react/jsx-runtime':{jsx,jsxs:jsx},'react-native':{View:'View',Animated:{View:'AnimatedView'},Platform:{OS:'web'}},
+  '@getpaseo/plugin/client':{},'@getpaseo/plugin/client/ui':{},'../shared/settings':{},'../shared/host-context':{},'../shared/model':{},'../shared/sidebar-tabs':{},'./dropdown-menu':{},'./visuals':{useMotion:target=>target},
+ });
+ const view={theme:{colors:{surface1:'hover',surface2:'selected'}}};
+ const render=(selected=false,disabled=false)=>{cursor=0;return mod.SidebarTabSurface({selected,disabled,view,limited:true,children:['label','close']})};
+ const layer=node=>node.props.children[0].props;
+ let node=render();assert.equal(layer(node).style.opacity,0);assert.equal(layer(node).pointerEvents,'none');
+ node.props.onPointerEnter({nativeEvent:{pointerType:'touch'}});assert.equal(layer(render()).style.opacity,0);
+ node.props.onPointerEnter({nativeEvent:{pointerType:'mouse'}});node=render();assert.equal(layer(node).style.opacity,1);assert.equal(layer(node).style.backgroundColor,'hover');
+ assert.deepEqual([layer(node).style.left,layer(node).style.right],[0,0]);assert.equal(node.props.style.maxWidth,160);
+ node.props.onPointerLeave();assert.equal(layer(render()).style.opacity,0);assert.equal(layer(render(true)).style.opacity,1);assert.equal(layer(render(true)).style.backgroundColor,'selected');
+ node.props.onFocus({target:{matches:()=>false}});assert.equal(layer(render()).style.opacity,0);
+ node.props.onFocus({target:{matches:()=>true}});assert.equal(layer(render()).style.opacity,1);
+ node.props.onBlur({currentTarget:{contains:()=>true},relatedTarget:{}});assert.equal(layer(render()).style.opacity,1);
+ node.props.onBlur({currentTarget:{contains:()=>false},relatedTarget:null});assert.equal(layer(render()).style.opacity,0);
+ node.props.onPointerEnter({nativeEvent:{pointerType:'mouse'}});assert.equal(layer(render(false,true)).style.opacity,0);
+});

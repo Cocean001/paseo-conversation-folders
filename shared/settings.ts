@@ -38,7 +38,7 @@ export const projectAppearance = defineSettings({
   id: 'project-appearance', scope: 'host', version: 1,
   schema: z.object({ projects: z.record(z.string(), z.object({
     name: z.string().trim().max(60),
-    icon: z.enum(['project', 'folder', 'code', 'globe', 'star', 'book']),
+    icon: z.string().min(1).max(80),
     color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
     image: z.string().max(180000).regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/).optional(),
   })).default({}) }),

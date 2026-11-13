@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Animated, Easing, Platform, Pressable, View, Image } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Animated, Easing, Platform, Pressable, View, Image, Text } from 'react-native';
 import { Icon } from '@getpaseo/plugin/client/ui';
 
 const paths = {
@@ -32,8 +32,10 @@ const paths = {
   settings: 'M4 7h16M4 17h16M8 4v6M16 14v6',
   move: 'M12 3v18M3 12h18m-6-15-3-3-3 3m6 12-3 3-3-3M6 9l-3 3 3 3m12-6 3 3-3 3',
 };
-export function Glyph({ name, color, size = 14 }: { name: keyof typeof paths; color: string; size?: number }) {
-  return <View style={{ width: size, height: size, flexShrink: 0 }}><Icon size={size} color={color} icon={{ svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${paths[name]}"/></svg>` }} /></View>;
+export function Glyph({ name, color, size = 14 }: { name: string; color: string; size?: number }) {
+  if (name.startsWith('emoji:')) return <Text style={{width:size+4,height:size+6,fontSize:size,lineHeight:size+6,textAlign:'center'}}>{name.slice(6)}</Text>;
+  if (!(name in paths)) return <Icon name={name} size={size} color={color} />;
+  return <View style={{ width: size, height: size, flexShrink: 0 }}><Icon size={size} color={color} icon={{ svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${paths[name as keyof typeof paths]}"/></svg>` }} /></View>;
 }
 export function useMotion(target: number) {
   const value = useRef(new Animated.Value(target)).current;

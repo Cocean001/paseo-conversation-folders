@@ -7,7 +7,7 @@ export interface ConversationDestination { hostId: string; groupId: string | nul
 const MIME = 'application/x-paseo-conversation-folder';
 interface Transfer { types: readonly string[]; effectAllowed: string; dropEffect: string; setData(type: string, data: string): void; getData(type: string): string }
 interface DragEvent { dataTransfer: Transfer; clientY: number; relatedTarget?: unknown; preventDefault(): void; stopPropagation(): void }
-interface Element { style: { opacity: string }; draggable: boolean; addEventListener(type: string, handler: (event: DragEvent) => void): void; removeEventListener(type: string, handler: (event: DragEvent) => void): void; contains(node: unknown): boolean; parentElement: Element | null; scrollHeight: number; clientHeight: number; scrollTop: number; getBoundingClientRect(): { top: number; bottom: number } }
+interface Element { style: { opacity: string }; setAttribute?(name:string,value:string): void; removeAttribute?(name:string): void; draggable: boolean; addEventListener(type: string, handler: (event: DragEvent) => void): void; removeEventListener(type: string, handler: (event: DragEvent) => void): void; contains(node: unknown): boolean; parentElement: Element | null; scrollHeight: number; clientHeight: number; scrollTop: number; getBoundingClientRect(): { top: number; bottom: number } }
 const DragContext = createContext<{ current: { current: DragConversation | null }; move(source: DragConversation, destination: ConversationDestination): Promise<boolean>; motion?: ReturnType<typeof createLayoutMotion> } | null>(null);
 export function ConversationDragProvider({ children, move }: { children: ReactNode; move(source: DragConversation, destination: ConversationDestination): Promise<boolean> }) {
   const current = useRef<DragConversation | null>(null);
@@ -32,10 +32,10 @@ export function DragConversationRow({ source, children }: { source: DragConversa
     if (!element?.addEventListener) return;
     const unregister = context.motion?.register(conversationMotionKey(source.hostId, source.agentId), element as unknown as MotionElement);
     element.draggable = true;
-    const start = (event: DragEvent) => { context.current.current = source; event.stopPropagation(); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData(MIME, JSON.stringify(source)); element.style.opacity = '0.5'; };
-    const end = () => { context.current.current = null; element.style.opacity = ''; };
+    const start = (event: DragEvent) => { context.current.current = source; event.stopPropagation(); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData(MIME, JSON.stringify(source)); element.style.opacity = '0.5'; element.setAttribute?.('data-paseo-sidebar-dragging','true'); };
+    const end = () => { context.current.current = null; element.style.opacity = ''; element.removeAttribute?.('data-paseo-sidebar-dragging'); };
     element.addEventListener('dragstart', start); element.addEventListener('dragend', end);
-    return () => { unregister?.(); element.removeEventListener('dragstart', start); element.removeEventListener('dragend', end); element.draggable = false; element.style.opacity = ''; };
+    return () => { unregister?.(); element.removeEventListener('dragstart', start); element.removeEventListener('dragend', end); element.draggable = false; element.style.opacity = ''; element.removeAttribute?.('data-paseo-sidebar-dragging'); };
   }, [context, source.hostId, source.agentId]);
   return <View ref={node} accessibilityHint="Drag to a folder or above another conversation to organize" style={{ minWidth: 0 }}>{children}</View>;
 }
@@ -55,17 +55,17 @@ export function ConversationDropTarget({ destination, children, view, activate }
     const enter = (event: DragEvent) => { if (!accepts(event)) return; event.preventDefault(); event.stopPropagation(); setOver(true); if (!timer) timer = setTimeout(() => activateRef.current?.(), 500); };
     const over = (event: DragEvent) => {
       if (!accepts(event)) { clear(); return; }
-      event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = 'move';
+      event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = 'move'; setOver(true); if (!timer) timer = setTimeout(() => activateRef.current?.(), 500);
       let scroll = element.parentElement;
       while (scroll) { if (scroll.scrollHeight > scroll.clientHeight + 2) { const rect = scroll.getBoundingClientRect(); if (event.clientY < rect.top + 32) scroll.scrollTop -= 12; if (event.clientY > rect.bottom - 32) scroll.scrollTop += 12; break; } scroll = scroll.parentElement; }
     };
     const leave = (event: DragEvent) => { if (!element.contains(event.relatedTarget)) clear(); };
-    const drop = (event: DragEvent) => { if (!accepts(event)) return; event.preventDefault(); event.stopPropagation(); clear(); try { const value = JSON.parse(event.dataTransfer.getData(MIME)); const source = context.current.current; if (!source || value.hostId !== source.hostId || value.agentId !== source.agentId) return; context.current.current = null; setSaving(true); void context.move(source, destination).finally(() => setSaving(false)); } catch { context.current.current = null; } };
+    const drop = (event: DragEvent) => { if (!accepts(event)) return; event.preventDefault(); event.stopPropagation(); clear(); try { const value = JSON.parse(event.dataTransfer.getData(MIME)); const source = context.current.current; if (!source || value.hostId !== source.hostId || value.agentId !== source.agentId) return; context.current.current = null; setSaving(true); void context.move(source, destination).catch(() => false).finally(() => setSaving(false)); } catch { context.current.current = null; } };
     const document = (globalThis as unknown as { document?: Element }).document;
     document?.addEventListener('dragend', clear); document?.addEventListener('drop', clear);
     for (const [name, handler] of [['dragenter', enter], ['dragover', over], ['dragleave', leave], ['drop', drop], ['dragend', clear]] as const) element.addEventListener(name, handler);
     return () => { if (timer) clearTimeout(timer); document?.removeEventListener('dragend', clear); document?.removeEventListener('drop', clear); for (const [name, handler] of [['dragenter', enter], ['dragover', over], ['dragleave', leave], ['drop', drop], ['dragend', clear]] as const) element.removeEventListener(name, handler); };
-  }, [context, destination.hostId, destination.groupId, destination.beforeId, destination.beforeHostId, saving]);
+  }, [context, destination.hostId, destination.groupId, destination.beforeId, destination.beforeHostId, destination.projectKey, destination.projectTitle, saving]);
   return <View ref={node} accessibilityState={{ busy: saving }} style={{ minWidth: 0, position: 'relative', borderRadius: 5, backgroundColor: over && !destination.beforeId ? view.theme.colors.surface2 : undefined }}>
     {children}
     {over && <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 2, right: 2, ...(destination.beforeId ? { height: 2, backgroundColor: view.theme.colors.accent || view.theme.colors.foregroundMuted } : { bottom: 0, borderWidth: 1, borderRadius: 5, borderColor: view.theme.colors.accent || view.theme.colors.foregroundMuted }) }} />}

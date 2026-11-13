@@ -5,7 +5,7 @@ const ts = require('typescript');
 function harness(status = 'online') {
   let cursor = 0, states = [], tree, calls = [], resolveOpen, rejectOpen;
   const jsx = (type, props) => ({ type, props: props || {} });
-  const imports = {
+  const imports = { './folder-add':{FolderAdd:'FolderAdd'}, './web': {isSidebarDragging:()=>false}, './folder-drag': {FolderDragProvider:'FolderDragProvider',DragFolderRow:'DragFolderRow',FolderDropTarget:'FolderDropTarget'},
     '../shared/status': {aggregateStates:()=>({state:'idle',hasUpdates:false})}, '../shared/model': {}, './drag-and-drop': {}, './conversation-view': {useConversationView:()=>({options:{}})}, '../shared/conversations': {}, './context-menu': {}, './image-picker': {}, './visuals': { FeedbackPressable: 'Pressable', Glyph: 'Glyph', StatusMark: 'StatusMark', EntryReveal: 'EntryReveal' }, '../shared/settings': {},
     react: { useEffect() {}, useState(initial) { const i = cursor++; if (!(i in states)) states[i] = initial; return [states[i], next => { states[i] = typeof next === 'function' ? next(states[i]) : next; }]; }, useRef(value) { const i = cursor++; if (!(i in states)) states[i] = { current: value }; return states[i]; } },
     'react/jsx-runtime': { jsx, jsxs: jsx }, 'react-native': { View: 'View', Pressable: 'Pressable', Text: 'Text' }, '@getpaseo/plugin/client/ui': { TextInput: 'TextInput' },
