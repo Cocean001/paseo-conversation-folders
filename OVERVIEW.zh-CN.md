@@ -2,13 +2,10 @@
 
 用文件夹、独立标签页和拖动操作整理已有的 Paseo 对话。
 
-## 安装
+## 启用
 
 守护进程和客户端需要 Paseo `>=0.16.0-beta.1 <0.17.0`。
 
-```sh
-paseo plugin install https://github.com/Cocean001/paseo-conversation-folders
-```
 
 在 **Settings → Sidebar → Sidebar view** 中选择 **Conversation folders**。
 

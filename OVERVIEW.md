@@ -2,13 +2,10 @@
 
 Organize existing Paseo conversations with folders, separate tabs, and drag and drop.
 
-## Install
+## Setup
 
 Requires Paseo `>=0.16.0-beta.1 <0.17.0` on the daemon and clients.
 
-```sh
-paseo plugin install https://github.com/Cocean001/paseo-conversation-folders
-```
 
 Select **Conversation folders** in **Settings → Sidebar → Sidebar view**.
 
