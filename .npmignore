@@ -7,9 +7,12 @@ coverage/
 *.tsbuildinfo
 *.tgz
 
-# Local evidence, demo instances and screenshots / 本地验证、演示实例与截图
+# Local evidence; only release PNG screenshots are included / 本地验证；仅纳入发布用 PNG 截图
 /artifacts/
-/assets/
+/assets/*
+!/assets/screenshots/
+/assets/screenshots/*
+!/assets/screenshots/*.png
 /playwright-report/
 /test-results/
 *.log
