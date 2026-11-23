@@ -45,6 +45,16 @@ export const projectAppearance = defineSettings({
 });
 
 
+// Per-device view state: what is folded or open on a phone should not fold the desktop. Shared structure stays in host documents.
+export const viewState = defineSettings({
+  id: 'view-state', scope: 'device', version: 1,
+  schema: z.object({
+    open: z.record(z.string(), z.boolean()).default({}),
+    showAll: z.array(z.string()).default([]),
+    activeTab: z.string().nullable().default(null),
+  }),
+});
+
 export const sidebarTabs = defineSettings({
   id: 'sidebar-tabs', scope: 'host', version: 1,
   schema: z.object({

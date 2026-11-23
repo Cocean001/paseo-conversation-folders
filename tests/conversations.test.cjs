@@ -13,3 +13,5 @@ test('status filters combine with case-insensitive title search',()=>{
  assert.equal(matchesConversation({...a,status:'error'},{...defaults,filter:'errors'}),true);assert.equal(matchesConversation({...a,attentionReason:'error'},{...defaults,filter:'errors'}),true);
  assert.equal(matchesConversation({...a,status:'initializing'},{...defaults,filter:'running'}),true);
 });
+
+test('background helper agents never show as conversations',()=>{const base={id:'x',hostId:'h',title:'Codex run',status:'idle',createdAt:'',lastActivityAt:'',requiresAttention:false,attentionReason:null};assert.equal(matchesConversation({...base,background:true},defaults),false);assert.equal(matchesConversation(base,defaults),true);});

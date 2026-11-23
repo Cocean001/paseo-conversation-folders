@@ -57,7 +57,10 @@ export function FolderDropTarget({ hostId, group, root = false, topLevel = true,
       const source = context.current.current;
       if (!source || pending.current || (!anyHost && source.hostId !== hostId) || !Array.from(event.dataTransfer.types).includes(MIME)) return null;
       const rect = element.getBoundingClientRect(), edge = Math.min(8, rect.height / 4);
-      const position = root || insideOnly ? 'inside' : event.clientY < rect.top + edge ? 'before' : event.clientY > rect.bottom - edge ? 'after' : 'inside';
+      // Projects only reorder among projects; nesting one inside another is never what a drop on a project row means.
+      const projectOnProject = !!source.project && !!group?.projectKey;
+      if (projectOnProject && insideOnly) return null;
+      const position = root || insideOnly ? 'inside' : projectOnProject ? (event.clientY < rect.top + rect.height / 2 ? 'before' : 'after') : event.clientY < rect.top + edge ? 'before' : event.clientY > rect.bottom - edge ? 'after' : 'inside';
       const destinationHost = anyHost ? source.hostId : hostId;
       const placement: FolderDestination = root ? { hostId: destinationHost, parentId: null, topLevel } : position === 'inside' ? { hostId, parentId: group!.id } : { hostId, parentId: group!.parentId ?? null, topLevel: !!group!.topLevel, siblingId: group!.id, position };
       const groups = context.groups(destinationHost);

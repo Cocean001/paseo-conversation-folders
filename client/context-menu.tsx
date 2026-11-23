@@ -22,7 +22,7 @@ export function ContextMenu({ anchor, actions, close, view }: { anchor: MenuPoin
   }, [anchor]);
   if (!anchor) return null;
   const c = view.theme.colors;
-  const rowHeight = view.layout.compact ? 44 : 30;
+  const rowHeight = view.layout.compact ? 44 : 32;
   const menuWidth = Math.min(208, width - 16);
   const menuHeight = actions.length * rowHeight + 10;
   function keyboard(event: { key: string; preventDefault(): void; stopPropagation(): void }) {
@@ -38,7 +38,7 @@ export function ContextMenu({ anchor, actions, close, view }: { anchor: MenuPoin
       <Pressable accessibilityLabel="Dismiss context menu" onPress={close} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
       <Animated.View accessibilityRole="menu" accessibilityLabel="Row actions" style={{ position: 'absolute', left: Math.max(8, Math.min(anchor.x, width - menuWidth - 8)), top: Math.max(8, Math.min(anchor.y, height - menuHeight - 8)), width: menuWidth, padding: 4, borderRadius: 6, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1, opacity: progress, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8, elevation: 4 }}>
         {actions.map((action, i) => <FeedbackPressable key={action.id} theme={view.theme} hoverBackground={c.surface2} focusRef={node => { refs.current[i] = node; }} accessibilityRole="menuitem" accessibilityLabel={action.label} disabled={action.disabled} onFocus={() => { index.current = i; }} onPress={() => { close(); action.onSelect(); }} style={{ minHeight: rowHeight, justifyContent: 'center', paddingHorizontal: 10, opacity: action.disabled ? 0.4 : 1 }}>
-          <Text style={{ color: action.danger ? c.statusDanger : c.foreground, fontSize: 12 }}>{action.label}</Text>
+          <Text style={{ color: action.danger ? c.statusDanger : c.foreground, fontSize: 13 }}>{action.label}</Text>
         </FeedbackPressable>)}
       </Animated.View>
     </View>

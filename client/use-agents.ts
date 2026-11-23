@@ -1,6 +1,6 @@
 import { usePaseo } from '@getpaseo/plugin/client';
 import { useEffect, useState } from 'react';
-export interface Conversation { workspaceId?: string; id: string; title: string | null; status: string; lastActivityAt?: string; cwd: string }
+export interface Conversation { workspaceId?: string; id: string; title: string | null; status: string; lastActivityAt?: string; cwd: string; background?: boolean }
 export function useConversations() {
   const paseo = usePaseo();
   const [agents, setAgents] = useState<Conversation[]>([]);
@@ -10,7 +10,8 @@ export function useConversations() {
     const lifetime = new AbortController();
     const directory = new Map<string, Conversation>();
     let generation = 0;
-    const publish = () => setAgents([...directory.values()].sort((a, b) => (b.lastActivityAt ?? '').localeCompare(a.lastActivityAt ?? '')));
+    // Background agents are helpers Paseo keeps out of tabs and lists (paseo ls hides them too).
+    const publish = () => setAgents([...directory.values()].filter(agent => !agent.background).sort((a, b) => (b.lastActivityAt ?? '').localeCompare(a.lastActivityAt ?? '')));
     void paseo.agents.list({ subscribe: {}, signal: lifetime.signal, filter: { includeArchived: false, includeInternal: false }, page: { limit: 100 } }).then(({ subscription }) => {
       if (lifetime.signal.aborted) return;
       subscription.subscribe({

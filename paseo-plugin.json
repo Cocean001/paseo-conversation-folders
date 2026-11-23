@@ -2,17 +2,20 @@
   "id": "conversation-folders",
   "name": "Conversation folders",
   "requirements": {
-    "paseo": ">=0.16.0-beta.1 <0.17.0"
+    "paseo": ">=0.16.0-beta.1 <0.18.0"
   },
-  "description": "Organize existing Paseo conversations with folders, custom tabs, project grouping, and filters.",
+  "description": "Organize existing Paseo conversations with folders, a Recent list, custom tabs, project grouping, and filters.",
   "translations": {
     "zh-CN": {
       "name": "对话文件夹",
-      "description": "用文件夹、自定义标签页、项目分组与筛选整理已有 Paseo 对话。"
+      "description": "用文件夹、最近对话、自定义标签页、项目分组与筛选整理已有 Paseo 对话。"
     }
   },
   "media": [
-    "assets/screenshots/sidebar-overview.png",
+    "assets/screenshots/sidebar-desktop.png",
+    "assets/screenshots/sidebar-dark.png",
+    "assets/screenshots/sidebar-zh-cn.png",
+    "assets/screenshots/sidebar-phone.png",
     "assets/screenshots/new-folder-menu.png",
     "assets/screenshots/new-folder-input.png",
     "assets/screenshots/picker-current-layout.png",
@@ -21,7 +24,6 @@
     "assets/screenshots/independent-design-tab.png",
     "assets/screenshots/project-appearance.png",
     "assets/screenshots/icon-picker.png",
-    "assets/screenshots/filter-menu.png",
     "assets/screenshots/display-and-loading.png",
     "assets/screenshots/conversation-actions.png",
     "assets/screenshots/collapse-all.png",

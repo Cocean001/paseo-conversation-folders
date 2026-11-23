@@ -24,6 +24,7 @@ const paths = {
   star: 'm12 3 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1Z',
   book: 'M12 5C8 2 4 3 2 4v16c3-2 7-2 10 0 3-2 7-2 10 0V4c-2-1-6-2-10 1Zm0 0v15',
   folder: 'M3 7V5h6l2 2h10v13H3Z',
+  folderPlus: 'M3 7V5h6l2 2h10v13H3ZM12 10v6M9 13h6',
   server: 'M3 3h18v7H3ZM3 14h18v7H3ZM7 6h.01M7 17h.01',
   project: 'M3 3h7v7H3ZM14 3h7v7h-7ZM3 14h7v7H3ZM14 14h7v7h-7Z',
   chevron: 'm9 5 7 7-7 7',
@@ -109,14 +110,16 @@ export function StatusMark({ state, theme, loadingEffect, loadingColor }: { load
   const unread = ['updated', 'attention'].includes(state);
   const completed = ['finished', 'done'].includes(state);
   const label = unread ? 'Unread update' : completed ? 'Completed, read' : state.replace(/_/g, ' ');
-  return <View accessibilityLabel={label} style={{ width: 14, height: 14, alignItems: 'center', justifyContent: 'center' }}>{busy ? <LoadingMark effect={loadingEffect} color={loadingColor} /> : failed || permission ? <Glyph name="alert" size={12} color={failed ? c.statusDanger : c.statusWarning} /> : <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: unread ? c.accent : completed ? c.statusSuccess : c.foregroundMuted, opacity: unread || completed ? 1 : 0.35 }} />}</View>;
+  // Only states that need the user stand out: a read, finished conversation looks like any idle one.
+  return <View accessibilityLabel={label} style={{ width: 14, height: 14, alignItems: 'center', justifyContent: 'center' }}>{busy ? <LoadingMark effect={loadingEffect} color={loadingColor} /> : failed || permission ? <Glyph name="alert" size={12} color={failed ? c.statusDanger : c.statusWarning} /> : <View style={{ width: unread ? 7 : 5, height: unread ? 7 : 5, borderRadius: 4, backgroundColor: unread ? c.accent : c.foregroundMuted, opacity: unread ? 1 : 0.3 }} />}</View>;
 }
 
 /** Keep the item's icon except while busy; collapsed updates use a corner badge. */
-export function BranchIcon({ state, hasUpdates = false, open, icon, image, color, theme, loadingEffect, loadingColor }: { loadingColor?: string; loadingEffect?: LoadingEffect; state?: string; hasUpdates?: boolean; open: boolean; icon: import('react').ComponentProps<typeof Glyph>['name']; image?: string; color?: string; theme: import('@getpaseo/plugin/client').PluginSidebarViewProps['theme'] }) {
-  const busy = ['running','initializing','connecting'].includes(state || '');
+export function BranchIcon({ state, hasUpdates = false, open, icon, image, color, tile, theme, loadingEffect, loadingColor }: { tile?: { color: string; letter: string }; loadingColor?: string; loadingEffect?: LoadingEffect; state?: string; hasUpdates?: boolean; open: boolean; icon: import('react').ComponentProps<typeof Glyph>['name']; image?: string; color?: string; theme: import('@getpaseo/plugin/client').PluginSidebarViewProps['theme'] }) {
+  // A project tile is its identity, so it stays visible while busy; the row shows the spinner instead.
+  const busy = !tile && ['running','initializing','connecting'].includes(state || '');
   return <View style={{ width: 16, height: 16, position: 'relative', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-    {busy ? <StatusMark state={state!} theme={theme} loadingColor={loadingColor} loadingEffect={loadingEffect} /> : image ? <BranchImage uri={image} /> : <Glyph name={icon} color={color || theme.colors.foregroundMuted} />}
+    {busy ? <StatusMark state={state!} theme={theme} loadingColor={loadingColor} loadingEffect={loadingEffect} /> : image ? <BranchImage uri={image} /> : tile ? <View style={{ width: 16, height: 16, borderRadius: 4, backgroundColor: tile.color, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: '#ffffff', fontSize: 10, lineHeight: 12, fontWeight: '600' }}>{tile.letter}</Text></View> : <Glyph name={icon} color={color || theme.colors.foregroundMuted} />}
     {!open && hasUpdates && <View accessibilityLabel="Updates in collapsed group" style={{ position: 'absolute', right: -3, bottom: -2, width: 7, height: 7, borderRadius: 4, backgroundColor: theme.colors.statusSuccess, borderWidth: 1, borderColor: theme.colors.surface0 }} />}
   </View>;
 }
@@ -151,10 +154,11 @@ export function ActionRow({ children, action, idleAction, persistent = false, co
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   const visible = compact || Platform.OS !== 'web' || hovered || focused || persistent;
-  const highlight = useMotion(hovered || focused || active || selected ? 1 : 0);
+  // The sidebar itself is painted surface2, so rows highlight with the border tone: full when selected, lighter on hover.
+  const highlight = useMotion(active || selected ? 1 : hovered || focused ? 0.55 : 0);
   const actionOpacity = useMotion(visible ? 1 : 0);
-  return <View onPointerEnter={event => { if (event.nativeEvent.pointerType !== 'touch') setHovered(true); }} onPointerLeave={() => setHovered(false)} {...(Platform.OS === 'web' ? { onFocus: (event: import('react-native').FocusEvent) => { const target = event.target as unknown as { matches?: (selector: string) => boolean }; setFocused(!!target?.matches?.(':focus-visible')); }, onBlur: (event: import('react-native').BlurEvent) => { const browserEvent = event as unknown as { currentTarget: { contains(node: unknown): boolean }; relatedTarget: unknown }; if (!browserEvent.currentTarget.contains(browserEvent.relatedTarget)) setFocused(false); } } : {})} style={{ flexDirection: 'row', alignItems: 'stretch', minWidth: 0, borderRadius: 5, paddingRight: 4, backgroundColor: 'transparent' }}>
-    <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, borderRadius: 5, backgroundColor: active || selected ? theme?.colors.surface2 : hoverBackground || theme?.colors.surface1, opacity: highlight }} />
+  return <View onPointerEnter={event => { if (event.nativeEvent.pointerType !== 'touch') setHovered(true); }} onPointerLeave={() => setHovered(false)} {...(Platform.OS === 'web' ? { onFocus: (event: import('react-native').FocusEvent) => { const target = event.target as unknown as { matches?: (selector: string) => boolean }; setFocused(!!target?.matches?.(':focus-visible')); }, onBlur: (event: import('react-native').BlurEvent) => { const browserEvent = event as unknown as { currentTarget: { contains(node: unknown): boolean }; relatedTarget: unknown }; if (!browserEvent.currentTarget.contains(browserEvent.relatedTarget)) setFocused(false); } } : {})} style={{ flexDirection: 'row', alignItems: 'stretch', minWidth: 0, borderRadius: 6, paddingRight: 4, backgroundColor: 'transparent' }}>
+    <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, borderRadius: 6, backgroundColor: hoverBackground || theme?.colors.border, opacity: highlight }} />
     {children}<Animated.View pointerEvents={visible ? 'auto' : 'none'} style={{ opacity: idleAction ? 1 : actionOpacity, justifyContent: 'center', alignSelf: 'stretch' }}>{idleAction ? <View style={{ justifyContent: 'center' }}>
       <Animated.View pointerEvents={visible ? 'auto' : 'none'} style={{ opacity: actionOpacity }}>{action}</Animated.View>
       <Animated.View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, alignItems: 'flex-end', opacity: actionOpacity.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }}>{idleAction}</Animated.View>
