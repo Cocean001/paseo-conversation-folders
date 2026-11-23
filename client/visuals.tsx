@@ -24,6 +24,7 @@ const paths = {
   star: 'm12 3 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1Z',
   book: 'M12 5C8 2 4 3 2 4v16c3-2 7-2 10 0 3-2 7-2 10 0V4c-2-1-6-2-10 1Zm0 0v15',
   folder: 'M3 7V5h6l2 2h10v13H3Z',
+  subtask: 'M6 4v8a4 4 0 0 0 4 4h10m-4-4 4 4-4 4',
   folderPlus: 'M3 7V5h6l2 2h10v13H3ZM12 10v6M9 13h6',
   server: 'M3 3h18v7H3ZM3 14h18v7H3ZM7 6h.01M7 17h.01',
   project: 'M3 3h7v7H3ZM14 3h7v7h-7ZM3 14h7v7H3ZM14 14h7v7h-7Z',

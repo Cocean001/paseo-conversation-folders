@@ -16,7 +16,9 @@ Select **Conversation folders** in **Settings → Sidebar → Sidebar view**. Pa
 
 ## Use
 
-- The search box at the top filters conversations by title. **Recent** lists the latest conversations across all projects (five on desktop, three on phones); fold it from its heading.
+- The search box at the top filters conversations by title. **In progress** lists what is running, waiting for your approval, or finished but unread, across all projects; fold it from its heading.
+- Subtasks a conversation starts are folded under it behind a count. A subtask appears in **In progress** only when it asks for permission, and the count turns amber when a subtask needs approval or failed. Search and status filters list subtasks directly.
+- Titles use two lines on desktop and one on phones; change it per device in **View options → Titles**.
 - In the project view each project shows its latest ten conversations with **Show more** for the rest, and uses the same colored initial tile as Paseo’s own sidebar. Hover a project and press **+** to start a new conversation in it.
 - Create folders with the **New folder** button or a server’s **More → New folder…**. Folders support one level of children; deleting a folder keeps its conversations.
 - Drag conversations, folders, and projects to move or reorder them. Dropping a project on another project reorders it and never nests it. Folder **+** lets you select conversations from **Current layout** or **Original sources** (server → workspace).
@@ -26,7 +28,7 @@ Select **Conversation folders** in **Settings → Sidebar → Sidebar view**. Pa
 - Right-click a conversation, use **More**, or long-press on a phone for rename, pin, labels, copy, archive, and deletion where available. Archive and deletion require confirmation; workspace actions affect the whole workspace.
 - The interface follows Paseo’s language setting. English and Simplified Chinese are included.
 
-Folders, order, project appearance, and display settings are saved in Paseo’s plugin settings, shared by every connected client, and update live. Folded branches, **Show more**, and the selected tab are remembered on each device. Conversations keep their original server, workspace, and files. The plugin does not upload this information to an external service.
+Folders, order, project appearance, and display settings are saved in Paseo’s plugin settings, shared by every connected client, and update live. Folded branches, **Show more**, title lines, and the selected tab are remembered on each device. Conversations keep their original server, workspace, and files. The plugin does not upload this information to an external service.
 
 ## Limits
 

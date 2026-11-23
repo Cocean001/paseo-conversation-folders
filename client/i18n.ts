@@ -26,7 +26,7 @@ const zh: Record<string, string> = {
   'Show background workspaces': '显示后台工作区', 'Status': '状态', 'All': '全部', 'All conversations': '全部对话',
   'Running': '运行中', 'Needs attention': '需要处理', 'Errors': '出错', 'Custom tabs': '自定义标签页', 'On': '开', 'Off': '关',
   'Server tabs': '服务器标签页', 'Show server tabs': '显示服务器标签页', 'Name': '名称', 'Initial': '首字母', 'Count': '数量', 'Hidden': '隐藏',
-  'Organize conversations…': '整理对话…', 'More actions': '更多操作', 'Recent': '最近', 'Projects': '项目', 'Folders': '文件夹', 'Servers': '服务器',
+  'Organize conversations…': '整理对话…', 'More actions': '更多操作', 'Recent': '最近', 'In progress': '进行中', '{0} subtasks': '{0} 个子任务', 'Two lines': '两行', 'Projects': '项目', 'Folders': '文件夹', 'Servers': '服务器',
   'Enable custom tabs': '启用自定义标签页', 'New tab…': '新建标签页…', 'Rename tab…': '重命名标签页…', 'Close tab': '关闭标签页', 'Reopen {0}': '重新打开 {0}',
   'Choose conversations': '选择对话', 'Rename tab': '重命名标签页', 'New tab': '新建标签页', 'Tab name…': '标签页名称…',
   'Choose existing conversations for this tab. They stay on their original servers.': '为这个标签页选择已有对话，对话仍留在原来的服务器上。',

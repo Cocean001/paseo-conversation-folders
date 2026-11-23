@@ -4,11 +4,11 @@
   "requirements": {
     "paseo": ">=0.16.0-beta.1 <0.18.0"
   },
-  "description": "Organize existing Paseo conversations with folders, a Recent list, custom tabs, project grouping, and filters.",
+  "description": "Organize existing Paseo conversations with folders, an In progress list, folded subtasks, custom tabs, project grouping, and filters.",
   "translations": {
     "zh-CN": {
       "name": "对话文件夹",
-      "description": "用文件夹、最近对话、自定义标签页、项目分组与筛选整理已有 Paseo 对话。"
+      "description": "用文件夹、进行中列表、子任务折叠、自定义标签页、项目分组与筛选整理已有 Paseo 对话。"
     }
   },
   "media": [

@@ -1,7 +1,7 @@
 import { FolderAdd } from './folder-add';
 import { isSidebarDragging } from './web';
 import { DragFolderRow, FolderDropTarget } from './folder-drag';
-import { conversationState, aggregateStates } from '../shared/status';
+import { conversationState, aggregateStates, quietSubtask } from '../shared/status';
 import { ConversationDropTarget, type ConversationDestination } from './drag-and-drop';
 import { ConversationViewContext, useConversationView } from './conversation-view';
 import { conversationOrder, matchesConversation, defaultConversationOptions, type ConversationOptions } from '../shared/conversations';
@@ -67,7 +67,7 @@ function ProjectBranch({ reference, workspaceKeys, view, row, children, excluded
   const projectFolder = foldersForHost(reference.hostId).find(group => group.projectKey === workspace?.project.key);
   const memberHosts = projectFolder?.agentIds.map(id => memberRef(reference.hostId, id).hostId) ?? [];
   const agents = useAgents({ hosts: [...new Set([reference.hostId, ...memberHosts])], where: a => ((workspaceKeys.has(a.workspace.key) && !excluded.has(`${a.hostId}:${a.id}`)) || !!projectFolder && containsMember(projectFolder.agentIds, reference.hostId, a.hostId, a.id)) && matchesConversation(a, options), orderBy: conversationOrder(options, projectFolder?.agentIds ?? unfiledOrder(reference.hostId), reference.hostId) });
-  const agentStates = useAgents({ hosts: [...new Set([reference.hostId, ...memberHosts])], where: agent => (!options.members || options.members.some(member => member.hostId === agent.hostId && member.agentId === agent.id)) && ((workspaceKeys.has(agent.workspace.key) && !excluded.has(`${agent.hostId}:${agent.id}`)) || !!projectFolder && containsMember(projectFolder.agentIds, reference.hostId, agent.hostId, agent.id)), groupBy: agent => conversationState(agent) });
+  const agentStates = useAgents({ hosts: [...new Set([reference.hostId, ...memberHosts])], where: agent => (!options.members || options.members.some(member => member.hostId === agent.hostId && member.agentId === agent.id)) && ((workspaceKeys.has(agent.workspace.key) && !excluded.has(`${agent.hostId}:${agent.id}`)) || !!projectFolder && containsMember(projectFolder.agentIds, reference.hostId, agent.hostId, agent.id)) && !quietSubtask(agent), groupBy: agent => conversationState(agent) });
   const projectStatus = aggregateStates(agentStates.map(group => group.key));
   const key = workspace?.project.key;
   const appearance = settings.status === 'ready' && key ? settings.values.projects[key] : undefined;
@@ -165,7 +165,7 @@ function HostBranch({ host, mode, view, row, createFolder, groups = [], excluded
   const c = view.theme.colors;
   const available = !host.status || host.status === 'online';
   const members = groups.flatMap(group => group.agentIds);
-  const states = useAgents({ where: agent => (!options.members || options.members.some(member => member.hostId === agent.hostId && member.agentId === agent.id)) && (agent.hostId === host.serverId || containsMember(members, host.serverId, agent.hostId, agent.id)), groupBy: agent => conversationState(agent) });
+  const states = useAgents({ where: agent => (!options.members || options.members.some(member => member.hostId === agent.hostId && member.agentId === agent.id)) && (agent.hostId === host.serverId || containsMember(members, host.serverId, agent.hostId, agent.id)) && !quietSubtask(agent), groupBy: agent => conversationState(agent) });
   const hostStatus = aggregateStates(states.map(bucket => bucket.key));
   async function createGroup() {
     if (!adding || pending.current || !path.trim() || !available) return;
@@ -196,7 +196,7 @@ function FolderConversations({ group, hostId, row }: { group: Group; hostId: str
 function FolderBranch({ group, groups, hostId, view, row, folderAction }: { folderAction?: FolderAction; group: Group; groups: Group[]; hostId: string; view: PluginSidebarViewProps; row(ref: AgentRef, groupId: string | null, folderHostId?: string, project?: {key:string;title:string}): ReactNode }) {
   const { options } = useConversationView();
   const members = [...group.agentIds, ...groups.filter(child => child.parentId === group.id).flatMap(child => child.agentIds)];
-  const agentStates = useAgents({ hosts: [...new Set(members.map(id => memberRef(hostId, id).hostId))], where: agent => (!options.members || options.members.some(member => member.hostId === agent.hostId && member.agentId === agent.id)) && containsMember(members, hostId, agent.hostId, agent.id), groupBy: agent => conversationState(agent) });
+  const agentStates = useAgents({ hosts: [...new Set(members.map(id => memberRef(hostId, id).hostId))], where: agent => (!options.members || options.members.some(member => member.hostId === agent.hostId && member.agentId === agent.id)) && containsMember(members, hostId, agent.hostId, agent.id) && !quietSubtask(agent), groupBy: agent => conversationState(agent) });
   const folderStatus = aggregateStates(agentStates.map(bucket => bucket.key));
   return <FolderArrival fresh={options.freshFolderId === group.id}><Branch stateKey={`folder:${hostId}:${group.id}`} folderGroup={group} state={folderStatus.state} hasUpdates={folderStatus.hasUpdates} destination={{ hostId, groupId: group.id }} title={group.name} icon="folder" view={view} hoverAction action={<FolderAdd hostId={hostId} group={group} view={view} />} menuActions={folderAction ? [
     { id: 'rename', label: t('Rename…'), onSelect: () => folderAction(hostId, group, 'rename') },

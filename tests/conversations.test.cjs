@@ -15,3 +15,12 @@ test('status filters combine with case-insensitive title search',()=>{
 });
 
 test('background helper agents never show as conversations',()=>{const base={id:'x',hostId:'h',title:'Codex run',status:'idle',createdAt:'',lastActivityAt:'',requiresAttention:false,attentionReason:null};assert.equal(matchesConversation({...base,background:true},defaults),false);assert.equal(matchesConversation(base,defaults),true);});
+
+test('subtasks fold under a listed parent but search and status filters still find them',()=>{
+ const child={...agent('c','Go-live checklist','2026-01-03','2026-02-03','closed',true,'finished'),parentAgent:{key:'local:p'}};
+ const parents=new Set(['local:p']);
+ assert.equal(matchesConversation(child,{...defaults,parents}),false);
+ assert.equal(matchesConversation(child,{...defaults,parents:new Set()}),true);
+ assert.equal(matchesConversation(child,{...defaults,parents,search:'go-live'}),true);
+ assert.equal(matchesConversation(child,{...defaults,parents,filter:'attention'}),true);
+});

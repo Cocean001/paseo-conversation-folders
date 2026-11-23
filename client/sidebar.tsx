@@ -4,7 +4,7 @@ import { ConversationViewContext } from './conversation-view';
 import { FolderDragProvider, DragFolderRow, FolderDropTarget, type DragFolder, type FolderDestination } from './folder-drag';
 import { SidebarTabsView, type SidebarTabScope, type SidebarTabControls } from './sidebar-tabs';
 import { ConversationActions } from './conversation-actions';
-import { conversationState, aggregateStates } from '../shared/status';
+import { conversationState, aggregateStates, quietSubtask } from '../shared/status';
 import { ConversationDragProvider, DragConversationRow, ConversationDropTarget, type DragConversation, type ConversationDestination } from './drag-and-drop';
 import { conversationOrder, matchesConversation, defaultConversationOptions, type ConversationOptions } from '../shared/conversations';
 import { DropdownMenu, type DropdownAnchor, type DropdownItem } from './dropdown-menu';
@@ -25,20 +25,23 @@ import type { ReactNode } from 'react';
 const mediaQuery = (globalThis as unknown as { matchMedia?: (query: string) => { matches: boolean } }).matchMedia;
 const feedback = Platform?.OS === 'web' && mediaQuery && !mediaQuery('(prefers-reduced-motion: reduce)').matches ? { transitionProperty: 'background-color, opacity', transitionDuration: '140ms', transitionTimingFunction: 'ease-out' } : {};
 
-function ConversationRow({ reference, view, select, moving, detailed, serverLabel, loadingEffect, loadingColor }: { loadingColor?: string; loadingEffect?: LoadingEffect; reference: AgentRef; view: PluginSidebarViewProps; select(id: string): void; moving: boolean; detailed?: boolean; serverLabel?: string }) {
+type SubtaskChip = { count: number; open: boolean; alert: boolean; toggle(): void };
+function ConversationRow({ reference, view, select, moving, detailed, serverLabel, loadingEffect, loadingColor, subtasks, nested }: { subtasks?: SubtaskChip; nested?: boolean; loadingColor?: string; loadingEffect?: LoadingEffect; reference: AgentRef; view: PluginSidebarViewProps; select(id: string): void; moving: boolean; detailed?: boolean; serverLabel?: string }) {
   const agent = useAgent(reference, a => ({ title: a.title, status: a.status, requiresAttention: a.requiresAttention, attentionReason: a.attentionReason, lastActivityAt: a.lastActivityAt }));
   if (!agent) return null;
   const c = view.theme.colors;
   const selected = view.active.agent?.key === reference.key;
   return <ConversationActions reference={reference} view={view}>{openActions => <View style={{ ...feedback, flexDirection: 'row', alignItems: 'center', minWidth: 0, borderRadius: 6, paddingVertical: 0 }}>
     <Pressable theme={view.theme} hoverBackground="transparent" accessibilityState={{ selected }} accessibilityRole="button" accessibilityLabel={agent.title || t('Untitled conversation')} onPress={() => view.navigation.openAgent(reference)} onLongPress={moving ? () => select(reference.id) : openActions} style={() => ({ flex: 1, minWidth: 0, minHeight: view.layout.compact ? 44 : 32, paddingLeft: 10, paddingRight: 6, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'transparent', borderRadius: 6 })}>
-      <StatusMark loadingColor={loadingColor} loadingEffect={loadingEffect} state={conversationState(agent)} theme={view.theme} />
-      <View style={{ flex: 1, minWidth: 0, paddingVertical: serverLabel || detailed ? 5 : 0 }}>
-        <Text selectable={false} numberOfLines={detailed ? 3 : 1} style={{ color: c.foreground, fontSize: 14, lineHeight: 20, fontWeight: selected ? '600' : '400' }}>{agent.title || t('Untitled conversation')}</Text>
+      {/* Inside a parent, a finished unread subtask is not news; running, permission and error still show. */}
+      <StatusMark loadingColor={loadingColor} loadingEffect={loadingEffect} state={nested && conversationState(agent) === 'updated' ? 'finished' : conversationState(agent)} theme={view.theme} />
+      <View style={{ flex: 1, minWidth: 0, paddingVertical: serverLabel || detailed ? 4 : 0 }}>
+        <Text selectable={false} numberOfLines={detailed ? 2 : 1} style={{ color: nested ? c.foregroundMuted : c.foreground, fontSize: nested ? 13 : 14, lineHeight: nested ? 18 : 20, fontWeight: selected ? '600' : '400' }}>{agent.title || t('Untitled conversation')}</Text>
         {serverLabel && <Text selectable={false} numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 11, lineHeight: 15 }}>{serverLabel}</Text>}
       </View>
 
     </Pressable>
+    {subtasks && <Pressable theme={view.theme} accessibilityRole="button" accessibilityLabel={t('{0} subtasks', subtasks.count)} accessibilityState={{ expanded: subtasks.open }} onPress={subtasks.toggle} style={{ minHeight: view.layout.compact ? 40 : 24, paddingHorizontal: 6, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 3 }}><Glyph name="subtask" size={12} color={subtasks.alert ? c.statusWarning : c.foregroundMuted} /><Text selectable={false} style={{ color: subtasks.alert ? c.statusWarning : c.foregroundMuted, fontSize: 12 }}>{subtasks.count}</Text></Pressable>}
     {moving && <Pressable theme={view.theme} accessibilityRole="button" accessibilityLabel={`Move ${agent.title ?? t('Untitled conversation')}`} onPress={() => select(reference.id)} style={{ padding: 8, minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' }}><Glyph name="move" color={c.foregroundMuted} /></Pressable>}
   </View>}</ConversationActions>;
 }
@@ -110,8 +113,18 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
   const allowedProjects = new Set(projects.filter(project => projectFilter.includes(project.key)).flatMap(project => project.items.map(workspace => workspace.key)));
   const allowedLabels = new Set(labels.filter(label => labelFilter.includes(label.key)).flatMap(label => label.items.map(workspace => workspace.key)));
   const workspaceKeys = projectFilter.length || labelFilter.length || options.showBackground === false ? [...new Set(projects.flatMap(project => project.items.map(workspace => workspace.key)))].filter(key => !blockedBackground.has(key) && (!projectFilter.length || allowedProjects.has(key)) && (!labelFilter.length || allowedLabels.has(key))) : undefined;
-  const conversationOptions: ConversationOptions = { ...(tabScope ? {members:tabScope.tab.members} : {}), ...defaultConversationOptions, ...options, search, workspaceKeys, freshFolderId };
-  const detailed = options.multilineTitles;
+  const allAgents = useAgents({ where: agent => !agent.background });
+  // Subtasks nest under a parent that is itself listed; children of hidden parents stay top-level.
+  const parents = new Set(allAgents.filter(agent => !tabScope || tabScope.tab.members.some(member => member.hostId === agent.hostId && member.agentId === agent.id)).map(agent => agent.key));
+  const subtaskGroups = useAgents({ where: agent => !agent.background && !!agent.parentAgent, groupBy: agent => agent.parentAgent!.key, orderBy: ['lastActivityAt', 'desc'] });
+  const alertedParents = new Set(useAgents({ where: agent => !agent.background && !!agent.parentAgent && ['permission', 'error'].includes(conversationState(agent)), groupBy: agent => agent.parentAgent!.key }).map(group => group.key));
+  const conversationOptions: ConversationOptions = { parents, ...(tabScope ? {members:tabScope.tab.members} : {}), ...defaultConversationOptions, ...options, search, workspaceKeys, freshFolderId };
+  // Long first-prompt titles read better on two lines where there is room; each device can choose.
+  const titleLines = viewApi?.titleLines ?? (options.multilineTitles ? 2 : view.layout.compact ? 1 : 2);
+  const detailed = titleLines === 2;
+  const setTitleLines = (lines: number) => { if (viewApi) viewApi.setTitleLines(lines); else void option({ multilineTitles: lines === 2 }); };
+  const nesting = !search.trim() && conversationOptions.filter === 'all';
+  const subtasksOf = (key: string) => nesting ? subtaskGroups.find(group => group.key === key)?.items : undefined;
   const c = view.theme.colors;
   const hosts = useHosts().map(host => ({ ...host, label: /macbook/i.test(host.label) ? 'MacBook' : host.label }));
   const targetHost = pickedHost && hosts.some(h => h.serverId === pickedHost) ? pickedHost : ownerHost;
@@ -121,9 +134,8 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
   const isExpanded = (id: string) => viewApi ? viewApi.isOpen(folderKey(id), id === 'ungrouped') : id === 'ungrouped';
   const expand = (id: string) => viewApi?.setOpen(folderKey(id), true);
   const agents = useAgents({ hosts: onlyHost ? [onlyHost] : [], where: agent => matchesConversation(agent, conversationOptions), orderBy: conversationOrder(conversationOptions) });
-  const allAgents = useAgents({ where: agent => !agent.background });
   const nativeAgents = useAgents({ groupBy: agent => agent.workspace.key });
-  const stateGroups = useAgents({ where: agent => !tabScope || tabScope.tab.members.some(member => member.hostId === agent.hostId && member.agentId === agent.id), groupBy: agent => conversationState(agent) });
+  const stateGroups = useAgents({ where: agent => (!tabScope || tabScope.tab.members.some(member => member.hostId === agent.hostId && member.agentId === agent.id)) && !quietSubtask(agent), groupBy: agent => conversationState(agent) });
   const filteredAgents = useAgents({ where: agent => matchesConversation(agent, conversationOptions), orderBy: conversationOrder(conversationOptions) });
   const visible = agents;
   const button = (label: string, press: () => void) => <Pressable theme={view.theme} accessibilityRole="button" accessibilityLabel={label} onPress={press} style={({ pressed }) => ({ minHeight: view.layout.compact ? 44 : 36, minWidth: (label === '＋' || label === '⋮') ? (view.layout.compact ? 44 : 36) : undefined, paddingHorizontal: 8, paddingVertical: 6, justifyContent: 'center', flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 6, backgroundColor: pressed ? c.surface2 : c.surface1, flexShrink: 0 })}>{(label === 'New folder' || label === '＋') ? <Glyph name="plus" color={c.foregroundMuted} /> : label === '⋮' ? <Glyph name="menu" color={c.foregroundMuted} /> : label === 'View options' ? <Glyph name="settings" color={c.foregroundMuted} /> : null}{label !== '＋' && label !== '⋮' && <Text style={{ color: c.foregroundMuted, fontSize: 12, lineHeight: 16 }}>{t(label)}</Text>}</Pressable>;
@@ -206,8 +218,13 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
     } finally { pending.current = false; }
   }
   function conversationRow(reference: AgentRef, groupId: string | null, folderHostId = reference.hostId, project?: {key:string;title:string}) {
+    const kids = subtasksOf(reference.key);
+    if (kids?.length) return <SubtaskGroup key={reference.key} parentKey={reference.key} kids={kids} alert={alertedParents.has(reference.key)} row={chip => parentRow(reference, groupId, folderHostId, project, chip)} child={child => <ConversationRow key={child.key} nested loadingColor={options.loadingColor} loadingEffect={options.loadingEffect} reference={child} view={view} moving={false} select={() => {}} />} />;
+    return parentRow(reference, groupId, folderHostId, project);
+  }
+  function parentRow(reference: AgentRef, groupId: string | null, folderHostId: string, project?: {key:string;title:string}, subtasks?: SubtaskChip) {
     return <ConversationDropTarget key={reference.key} destination={{ hostId: folderHostId, groupId, beforeId: reference.id, beforeHostId: reference.hostId, ...(project ? {projectKey:project.key,projectTitle:project.title} : {}) }} view={view}>
-      <DragConversationRow source={{ hostId: reference.hostId, agentId: reference.id }}><ConversationRow loadingColor={options.loadingColor} loadingEffect={options.loadingEffect} reference={reference} view={view} moving={options.grouping === 'manual' && selected !== null} select={id => setSelected(memberId(targetHost!, reference.hostId, id))} detailed={detailed} serverLabel={hosts.length > 1 && (groupId !== null || options.showServer) ? hosts.find(host => host.serverId === reference.hostId)?.label || 'Disconnected server' : undefined} /></DragConversationRow>
+      <DragConversationRow source={{ hostId: reference.hostId, agentId: reference.id }}><ConversationRow loadingColor={options.loadingColor} loadingEffect={options.loadingEffect} reference={reference} view={view} moving={options.grouping === 'manual' && selected !== null} select={id => setSelected(memberId(targetHost!, reference.hostId, id))} detailed={detailed} subtasks={subtasks} serverLabel={hosts.length > 1 && (groupId !== null || options.showServer) ? hosts.find(host => host.serverId === reference.hostId)?.label || 'Disconnected server' : undefined} /></DragConversationRow>
     </ConversationDropTarget>;
   }
   async function createHostFolder(hostId: string, name: string) {
@@ -274,7 +291,7 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
       { id: 'desc', label: t('Descending'), checked: conversationOptions.sortDirection === 'desc', disabled: conversationOptions.sortBy === 'manual', onSelect: () => { void option({ sortDirection: 'desc' }); } },
     ] },
     { id: 'filter', icon: 'filter', label: t('Status'), value: ({ all: t('All'), running: t('Running'), attention: t('Needs attention'), errors: t('Errors') })[conversationOptions.filter], items: (['all','running','attention','errors'] as const).map(filter => ({ id: filter, icon: ({ all: 'project', running: 'clock', attention: 'alert', errors: 'alert' } as const)[filter], label: ({ all: t('All conversations'), running: t('Running'), attention: t('Needs attention'), errors: t('Errors') })[filter], checked: conversationOptions.filter === filter, onSelect: () => { void option({ filter }); } })) },
-    { id: 'titles', icon: 'title', label: t('Titles'), value: detailed ? t('Multiline') : t('Single line'), items: [{ id: 'single', label: t('Single line'), checked: !detailed, onSelect: () => { void option({ multilineTitles: false }); } }, { id: 'multiline', label: t('Multiline'), checked: detailed, onSelect: () => { void option({ multilineTitles: true }); } }] },
+    { id: 'titles', icon: 'title', label: t('Titles'), value: detailed ? t('Two lines') : t('Single line'), items: [{ id: 'single', label: t('Single line'), checked: !detailed, onSelect: () => setTitleLines(1) }, { id: 'multiline', label: t('Two lines'), checked: detailed, onSelect: () => setTitleLines(2) }] },
     { id: 'display', icon: 'settings', label: t('Display'), items: [
       ...(multiHost ? [{ id: 'labels', label: t('Server labels'), checked: options.showServer, onSelect: () => { void option({ showServer: !options.showServer }); } },
       { id: 'tabs', label: t('Server tabs'), checked: options.showTabs, onSelect: () => { void option({ showTabs: !options.showTabs }); setPickedHost(null); } }] : []),
@@ -332,7 +349,7 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
     {tabScope && !tabScope.tab.members.length && <View style={{padding:8,gap:4}}><Text style={{color:c.foregroundMuted,fontSize:12}}>{t('Add existing conversations to this tab.')}</Text><Pressable theme={view.theme} accessibilityRole="button" accessibilityLabel={t('Choose conversations…')} onPress={tabScope.openMembers} style={{minHeight:view.layout.compact?44:32,justifyContent:'center'}}><Text style={{color:c.accent,fontSize:13}}>{t('Choose conversations…')}</Text></Pressable></View>}
     {folderError && <Text accessibilityRole="alert" style={{ marginHorizontal: 8, marginBottom: 6, color: c.statusDanger, fontSize: 11, lineHeight: 16 }}>{folderError}</Text>}
     {selected && <Text style={{ color: c.foregroundMuted, fontSize: 12, padding: 8 }}>{t('Choose a folder for the selected conversation')}</Text>}
-    {!search.trim() && <RecentSection view={view} options={conversationOptions} row={reference => <ConversationRow key={`recent:${reference.key}`} loadingColor={options.loadingColor} loadingEffect={options.loadingEffect} reference={reference} view={view} moving={false} select={() => {}} detailed={detailed} serverLabel={multiHost ? hosts.find(host => host.serverId === reference.hostId)?.label : undefined} />} />}
+    {!search.trim() && <ActiveSection view={view} options={conversationOptions} row={reference => <ConversationRow key={`active:${reference.key}`} loadingColor={options.loadingColor} loadingEffect={options.loadingEffect} reference={reference} view={view} moving={false} select={() => {}} detailed={detailed} serverLabel={multiHost ? hosts.find(host => host.serverId === reference.hostId)?.label : undefined} />} />}
     <SectionLabel view={view} label={({ manual: t('Folders'), project: t('Projects'), server: t('Servers'), 'server-project': t('Servers') })[options.grouping]} />
     <Transition identity={`${options.grouping}:${targetHost}:${options.showTabs}`}>
     {options.grouping !== 'manual' && <AutomaticTree pickerTree={pickerTree} addConversations={addConversations} revision={settings.revision} assignedConversations={assigned} conversationOptions={conversationOptions} unfiledOrder={hostId => hostState(hostId)?.ungroupedOrder ?? []} folderAction={folderAction} createFolder={createHostFolder} foldersForHost={hostId => presentationHostState(hostId)?.groups ?? []} mode={options.grouping} hosts={pickedHost ? hosts.filter(host => host.serverId === pickedHost) : hosts} view={view} row={conversationRow} />}
@@ -383,14 +400,26 @@ function SectionLabel({ view, label, open, toggle }: { view: PluginSidebarViewPr
   return toggle ? <Pressable theme={view.theme} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ expanded: open }} onPress={toggle} style={style}>{text}<Disclosure open={!!open} color={c.foregroundMuted} /></Pressable> : <View style={style}>{text}</View>;
 }
 
-/** The latest conversations across every project, above the tree; the tree itself is unchanged. */
-function RecentSection({ view, options, row }: { view: PluginSidebarViewProps; options: ConversationOptions; row(reference: AgentRef): ReactNode }) {
-  const [open, setOpen] = useBranchOpen('recent');
-  const recent = useAgents({ where: agent => matchesConversation(agent, options), orderBy: ['lastActivityAt', 'desc'] });
-  if (!recent.length) return null;
+const urgency = (state: string) => state === 'permission' || state === 'error' ? 0 : state === 'updated' ? 1 : 2;
+/** What is running, waiting on the user, or finished unread, across every project; quiet subtasks stay with their parent. */
+function ActiveSection({ view, options, row }: { view: PluginSidebarViewProps; options: ConversationOptions; row(reference: AgentRef): ReactNode }) {
+  const [open, setOpen] = useBranchOpen('active');
+  const active = useAgents({
+    where: agent => ['running', 'permission', 'error', 'updated'].includes(conversationState(agent)) && !quietSubtask(agent) && matchesConversation(agent, { ...options, parents: undefined }),
+    orderBy: (a, b) => urgency(conversationState(a)) - urgency(conversationState(b)) || (b.lastActivityAt || '').localeCompare(a.lastActivityAt || ''),
+  });
+  if (!active.length) return null;
   return <View style={{ minWidth: 0, marginBottom: 6 }}>
-    <SectionLabel view={view} label={t('Recent')} open={open} toggle={() => setOpen(!open)} />
-    {/* Phones have less room under Paseo's own menu, so they keep the project tree in view. */}
-    <Reveal open={open}>{recent.slice(0, view.layout.compact ? 3 : 5).map(row)}</Reveal>
+    <SectionLabel view={view} label={`${t('In progress')} · ${active.length}`} open={open} toggle={() => setOpen(!open)} />
+    <Reveal open={open}>{active.slice(0, view.layout.compact ? 4 : 8).map(row)}</Reveal>
+  </View>;
+}
+
+/** A parent conversation with its subtasks folded below it; children mount only while open. */
+function SubtaskGroup({ parentKey, kids, alert, row, child }: { parentKey: string; kids: readonly AgentRef[]; alert: boolean; row(chip: SubtaskChip): ReactNode; child(reference: AgentRef): ReactNode }) {
+  const [open, setOpen] = useBranchOpen(`subtasks:${parentKey}`, false);
+  return <View style={{ minWidth: 0 }}>
+    {row({ count: kids.length, open, alert, toggle: () => setOpen(!open) })}
+    <Reveal open={open}><View style={{ marginLeft: 22, minWidth: 0 }}>{open && kids.map(child)}</View></Reveal>
   </View>;
 }

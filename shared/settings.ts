@@ -52,6 +52,7 @@ export const viewState = defineSettings({
     open: z.record(z.string(), z.boolean()).default({}),
     showAll: z.array(z.string()).default([]),
     activeTab: z.string().nullable().default(null),
+    titleLines: z.number().int().min(1).max(2).nullable().default(null),
   }),
 });
 

@@ -1,12 +1,14 @@
 /** Presentation-only query policy shared by manual and automatic trees. */
 export type SortBy = 'activity' | 'created' | 'title' | 'manual';
 export type ConversationFilter = 'all' | 'running' | 'attention' | 'errors';
-export interface ConversationOptions { members?: readonly {hostId:string;agentId:string}[]; showCounts?: boolean; loadingColor?: string; collapseVersion?: number; allCollapsed?: boolean; freshFolderId?: string; loadingEffect?: 'spinner' | 'orbit' | 'pulse' | 'dots' | 'bars'; sortBy: SortBy; sortDirection: 'asc' | 'desc'; filter: ConversationFilter; search: string; workspaceKeys?: readonly string[] }
-export interface ConversationSnapshot { id: string; hostId: string; title: string | null; status: string; createdAt: string; lastActivityAt: string; requiresAttention: boolean; attentionReason: string | null; workspace?: { key: string }; background?: boolean }
+export interface ConversationOptions { members?: readonly {hostId:string;agentId:string}[]; parents?: ReadonlySet<string>; showCounts?: boolean; loadingColor?: string; collapseVersion?: number; allCollapsed?: boolean; freshFolderId?: string; loadingEffect?: 'spinner' | 'orbit' | 'pulse' | 'dots' | 'bars'; sortBy: SortBy; sortDirection: 'asc' | 'desc'; filter: ConversationFilter; search: string; workspaceKeys?: readonly string[] }
+export interface ConversationSnapshot { id: string; hostId: string; title: string | null; status: string; createdAt: string; lastActivityAt: string; requiresAttention: boolean; attentionReason: string | null; workspace?: { key: string }; background?: boolean; parentAgent?: { key: string } | null }
 export const defaultConversationOptions: ConversationOptions = { sortBy: 'activity', sortDirection: 'desc', filter: 'all', search: '' };
 export function matchesConversation(agent: ConversationSnapshot, options: ConversationOptions): boolean {
   // Background agents are helpers Paseo keeps out of tabs and lists; orchestrator runs would bury real conversations.
   if (agent.background) return false;
+  // Subtasks sit under their visible parent conversation; search and status filters still find them directly.
+  if (options.parents && agent.parentAgent && options.parents.has(agent.parentAgent.key) && !options.search.trim() && options.filter === 'all') return false;
   if (options.members && !options.members.some(member => member.hostId === agent.hostId && member.agentId === agent.id)) return false;
   if (options.workspaceKeys && (!agent.workspace || !options.workspaceKeys.includes(agent.workspace.key))) return false;
   if (options.search.trim() && !(agent.title || 'Untitled conversation').toLocaleLowerCase().includes(options.search.trim().toLocaleLowerCase())) return false;

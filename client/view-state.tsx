@@ -2,8 +2,8 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { useSettings } from '@getpaseo/plugin/client';
 import { viewState } from '../shared/settings';
 
-type State = { open: Record<string, boolean>; showAll: string[]; activeTab: string | null };
-const empty: State = { open: {}, showAll: [], activeTab: null };
+type State = { open: Record<string, boolean>; showAll: string[]; activeTab: string | null; titleLines: number | null };
+const empty: State = { open: {}, showAll: [], activeTab: null, titleLines: null };
 interface ViewApi {
   isOpen(key: string, fallback: boolean): boolean;
   setOpen(key: string, open: boolean): void;
@@ -12,6 +12,8 @@ interface ViewApi {
   setShowAll(key: string, value: boolean): void;
   activeTab: string | null;
   setActiveTab(id: string | null): void;
+  titleLines: number | null;
+  setTitleLines(lines: number): void;
   collapsed: boolean;
   toggleCollapseAll(extra?: readonly string[]): void;
 }
@@ -47,6 +49,8 @@ export function ViewStateProvider({ children }: { children: ReactNode }) {
     setShowAll: (key, show) => update(value => ({ ...value, showAll: show ? [...new Set([...value.showAll, key])] : value.showAll.filter(item => item !== key) })),
     activeTab: current.activeTab,
     setActiveTab: id => update(value => ({ ...value, activeTab: id })),
+    titleLines: current.titleLines,
+    setTitleLines: lines => update(value => ({ ...value, titleLines: lines })),
     collapsed,
     toggleCollapseAll: (extra = []) => {
       if (collapsed) update(value => ({ ...value, open: { ...beforeCollapse.current } }));
