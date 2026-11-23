@@ -10,6 +10,7 @@ import { TextInput, copyText } from '@getpaseo/plugin/client/ui';
 import { ContextMenu, type MenuPoint, type MenuAction } from './context-menu';
 import { ActionRow, FeedbackPressable, Glyph } from './visuals';
 import { t, timeLabel } from './i18n';
+import { usePins } from './pins';
 
 type Dialog = 'rename-agent' | 'rename' | 'labels' | 'archive-agent' | 'archive-workspace' | 'delete-agent';
 /** Actions stay attached to the conversation's source host, including mixed-host folders. */
@@ -23,6 +24,8 @@ export function ConversationActions({ reference, view, children }: { reference: 
   const agent = useAgent(reference, a => ({ title: a.title, workspace: a.workspace, lastActivityAt:a.lastActivityAt }));
   const workspace = useWorkspace(agent?.workspace ?? {kind: 'workspace', key: `${reference.hostId}:missing`, hostId: reference.hostId, id: '__missing__'}, w => ({ name: w.name, title: w.title, directory: w.directory, branch: w.branch, pinned: !!w.pinnedAt, labels: w.labels }));
   const hosts = useHosts();
+  const pins = usePins();
+  const pinned = !!pins?.isPinned(reference);
   const [hovered, setHovered] = useState(false);
   const [anchor, setAnchor] = useState<MenuPoint | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
@@ -54,6 +57,7 @@ export function ConversationActions({ reference, view, children }: { reference: 
   }
   const workspaceHandle = () => { if (!agent) throw new Error('This conversation is no longer available.'); return paseo.workspaces.ref(agent.workspace); };
   const actions: MenuAction[] = [
+    ...(pins ? [{ id: 'pin-conversation', label: pinned ? t('Unpin conversation') : t('Pin conversation'), disabled: busy, onSelect: () => { void run(async () => { if (!await pins.toggle(reference)) throw new Error('Could not save the pin. Refresh and try again.'); }); } }] : []),
     { id: 'open-workspace', label: t('Open workspace'), disabled: !agent || busy, onSelect: () => { if (agent) view.navigation.openWorkspace(agent.workspace); } },
     { id: 'copy-path', label: t('Copy path'), disabled: !workspace || busy, onSelect: () => { void run(() => copyText(workspace!.directory)); } },
     { id: 'copy-branch', label: t('Copy branch name'), disabled: !workspace?.branch || busy, onSelect: () => { void run(() => copyText(workspace!.branch!)); } },

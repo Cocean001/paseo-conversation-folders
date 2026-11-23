@@ -56,6 +56,12 @@ export const viewState = defineSettings({
   }),
 });
 
+// Conversations pinned to the top, newest pin first. Paseo's own pin is per workspace, and one workspace can hold dozens of conversations.
+export const pinnedConversations = defineSettings({
+  id: 'pinned-conversations', scope: 'host', version: 1,
+  schema: z.object({ items: z.array(z.object({ hostId: z.string(), agentId: z.string() })).default([]) }),
+});
+
 export const sidebarTabs = defineSettings({
   id: 'sidebar-tabs', scope: 'host', version: 1,
   schema: z.object({

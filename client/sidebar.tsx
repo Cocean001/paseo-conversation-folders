@@ -16,7 +16,8 @@ import { useAgent, useAgents, useHosts, useSettings, useRpc, useWorkspaces } fro
 import { FeedbackPressable as Pressable, Glyph, Reveal, Disclosure, Transition, StatusMark, EntryReveal, BranchIcon, FolderArrival, LoadingMark, loadingEffects, type LoadingEffect } from './visuals';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, TextInput, View, Platform } from 'react-native';
-import { organization, hostOrganizations, displayPreferences } from '../shared/settings';
+import { organization, hostOrganizations, displayPreferences, pinnedConversations } from '../shared/settings';
+import { PinsContext, pinKey, type Pins } from './pins';
 import { hostContext } from '../shared/host-context';
 import { AutomaticTree, ProjectFolder } from './automatic-tree';
 import { removeGroup, relocateGroup, memberId, memberRef, containsMember, applyAssignments, withProjectMembers } from '../shared/model';
@@ -91,6 +92,22 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
   const pending = useRef(false);
   useEffect(() => { let active = true; void readHostContext({}).then(result => { if (active) setOwnerHost(result.hostId); }).catch(error => { if (active) setContextError(String(error)); }); return () => { active = false; }; }, [readHostContext]);
   const viewApi = useViewState();
+  const pinSettings = useSettings(pinnedConversations);
+  const pinnedItems = pinSettings.status === 'ready' ? pinSettings.values.items : [];
+  const pinnedKeys = new Set(pinnedItems.map(item => pinKey(item.hostId, item.agentId)));
+  const pins: Pins = {
+    keys: pinnedKeys,
+    isPinned: ref => pinnedKeys.has(pinKey(ref.hostId, ref.id)),
+    toggle: async ref => {
+      if (pinSettings.status !== 'ready') return false;
+      const key = pinKey(ref.hostId, ref.id);
+      const items = pinnedKeys.has(key) ? pinnedItems.filter(item => pinKey(item.hostId, item.agentId) !== key) : [{ hostId: ref.hostId, agentId: ref.id }, ...pinnedItems];
+      return pinSettings.save({ items }, pinSettings.revision);
+    },
+  };
+  // A short sidebar (a small window, or many header and footer items) gets denser rows so conversations stay in view.
+  const [listHeight, setListHeight] = useState(0);
+  const short = listHeight > 0 && listHeight < 560;
   const [freshFolderId, setFreshFolderId] = useState<string | undefined>();
   const [selected, setSelected] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
@@ -122,9 +139,9 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
   const parents = new Set(allAgents.filter(agent => !tabScope || tabScope.tab.members.some(member => member.hostId === agent.hostId && member.agentId === agent.id)).map(agent => agent.key));
   const subtaskGroups = useSteadyList(useAgents({ where: agent => !agent.background && !!agent.parentAgent, groupBy: agent => agent.parentAgent!.key, orderBy: ['lastActivityAt', 'desc'] }));
   const alertedParents = new Set(useAgents({ where: agent => !agent.background && !!agent.parentAgent && ['permission', 'error'].includes(conversationState(agent)), groupBy: agent => agent.parentAgent!.key }).map(group => group.key));
-  const conversationOptions: ConversationOptions = { parents, ...(tabScope ? {members:tabScope.tab.members} : {}), ...defaultConversationOptions, ...options, search, workspaceKeys, freshFolderId };
+  const conversationOptions: ConversationOptions = { parents, pinned: pinnedKeys, ...(tabScope ? {members:tabScope.tab.members} : {}), ...defaultConversationOptions, ...options, search, workspaceKeys, freshFolderId };
   // Long first-prompt titles read better on two lines where there is room; each device can choose.
-  const titleLines = viewApi?.titleLines ?? (options.multilineTitles ? 2 : view.layout.compact ? 1 : 2);
+  const titleLines = viewApi?.titleLines ?? (options.multilineTitles ? 2 : view.layout.compact || short ? 1 : 2);
   const detailed = titleLines === 2;
   const setTitleLines = (lines: number) => { if (viewApi) viewApi.setTitleLines(lines); else void option({ multilineTitles: lines === 2 }); };
   const nesting = !search.trim() && conversationOptions.filter === 'all';
@@ -330,7 +347,7 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
   ];
   const compact = view.layout.compact;
   const iconButton = { width: compact ? 40 : 28, height: compact ? 40 : 28, borderRadius: 6, alignItems: 'center', justifyContent: 'center' } as const;
-  return <FolderDragProvider groups={hostId => rawHostState(hostId)?.groups ?? []} move={dropFolder}><ConversationDragProvider move={dropConversation}><TouchDragProvider enabled={touchMenu(view)} view={view}><TouchScrollView style={{ flex: 1, minWidth: 0, width: '100%' }} contentContainerStyle={{ paddingHorizontal: 8, paddingTop: 6, paddingBottom: 12, gap: 1, minWidth: 0 }} keyboardShouldPersistTaps="handled">
+  return <PinsContext.Provider value={pins}><FolderDragProvider groups={hostId => rawHostState(hostId)?.groups ?? []} move={dropFolder}><ConversationDragProvider move={dropConversation}><TouchDragProvider enabled={touchMenu(view)} view={view}><TouchScrollView onLayout={event => setListHeight(event.nativeEvent.layout.height)} style={{ flex: 1, minWidth: 0, width: '100%' }} contentContainerStyle={{ paddingHorizontal: 8, paddingTop: 6, paddingBottom: 12, gap: 1, minWidth: 0 }} keyboardShouldPersistTaps="handled">
     <FolderDropTarget hostId={targetHost!} root anyHost view={view}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, minWidth: 0, marginBottom: 6 }}>
       <View style={{ flex: 1, minWidth: 0, height: compact ? 40 : 30, flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 9, borderRadius: 7, borderWidth: 1, borderColor: searchFocused ? c.accent : c.border, backgroundColor: c.surface0 }}>
         <Glyph name="search" size={13} color={c.foregroundMuted} />
@@ -358,8 +375,9 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
     {tabScope && !tabScope.tab.members.length && <View style={{padding:8,gap:4}}><Text style={{color:c.foregroundMuted,fontSize:12}}>{t('Add existing conversations to this tab.')}</Text><Pressable theme={view.theme} accessibilityRole="button" accessibilityLabel={t('Choose conversations…')} onPress={tabScope.openMembers} style={{minHeight:view.layout.compact?44:32,justifyContent:'center'}}><Text style={{color:c.accent,fontSize:13}}>{t('Choose conversations…')}</Text></Pressable></View>}
     {folderError && <Text accessibilityRole="alert" style={{ marginHorizontal: 8, marginBottom: 6, color: c.statusDanger, fontSize: 11, lineHeight: 16 }}>{folderError}</Text>}
     {selected && <Text style={{ color: c.foregroundMuted, fontSize: 12, padding: 8 }}>{t('Choose a folder for the selected conversation')}</Text>}
-    {!search.trim() && <ActiveSection view={view} options={conversationOptions} row={reference => <ConversationRow key={`active:${reference.key}`} loadingColor={options.loadingColor} loadingEffect={options.loadingEffect} reference={reference} view={view} moving={false} select={() => {}} detailed={detailed} serverLabel={multiHost ? hosts.find(host => host.serverId === reference.hostId)?.label : undefined} />} />}
-    <SectionLabel view={view} label={({ manual: t('Folders'), project: t('Projects'), server: t('Servers'), 'server-project': t('Servers') })[options.grouping]} />
+    {!search.trim() && <PinnedSection view={view} options={conversationOptions} items={pinnedItems} dense={short} row={reference => <ConversationRow key={`pinned:${reference.key}`} loadingColor={options.loadingColor} loadingEffect={options.loadingEffect} reference={reference} view={view} moving={false} select={() => {}} detailed={detailed} serverLabel={multiHost ? hosts.find(host => host.serverId === reference.hostId)?.label : undefined} />} />}
+    {!search.trim() && <ActiveSection view={view} options={conversationOptions} dense={short} row={reference => <ConversationRow key={`active:${reference.key}`} loadingColor={options.loadingColor} loadingEffect={options.loadingEffect} reference={reference} view={view} moving={false} select={() => {}} detailed={detailed} serverLabel={multiHost ? hosts.find(host => host.serverId === reference.hostId)?.label : undefined} />} />}
+    <SectionLabel view={view} dense={short} label={({ manual: t('Folders'), project: t('Projects'), server: t('Servers'), 'server-project': t('Servers') })[options.grouping]} />
     <Transition identity={`${options.grouping}:${targetHost}:${options.showTabs}`}>
     {options.grouping !== 'manual' && <AutomaticTree pickerTree={pickerTree} addConversations={addConversations} revision={settings.revision} assignedConversations={assigned} conversationOptions={conversationOptions} unfiledOrder={hostId => hostState(hostId)?.ungroupedOrder ?? []} folderAction={folderAction} createFolder={createHostFolder} foldersForHost={hostId => presentationHostState(hostId)?.groups ?? []} mode={options.grouping} hosts={pickedHost ? hosts.filter(host => host.serverId === pickedHost) : hosts} view={view} row={conversationRow} />}
     {options.grouping === 'manual' && [...state.groups.filter(g => !g.parentId).flatMap(g => [g, ...(!g.projectKey && isExpanded(g.id) ? state.groups.filter(child => child.parentId === g.id) : [])]), { id: 'ungrouped', name: t('Unfiled'), agentIds: visible.filter(a => !assigned.has(`${a.hostId}:${a.id}`)).map(a => a.id) }].map(group => {
@@ -394,7 +412,7 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
     })}
     </Transition>
     {(settings.saveError || extraSettings.saveError || preferences.saveError) && <Text style={{ color: c.statusDanger, padding: 8 }}>{settings.saveError || extraSettings.saveError || preferences.saveError}</Text>}
-  </TouchScrollView></TouchDragProvider></ConversationDragProvider></FolderDragProvider>;
+  </TouchScrollView></TouchDragProvider></ConversationDragProvider></FolderDragProvider></PinsContext.Provider>;
 }
 
 function AddConversation({ reference, view, add }: { reference: AgentRef; view: PluginSidebarViewProps; add(): void }) {
@@ -402,25 +420,41 @@ function AddConversation({ reference, view, add }: { reference: AgentRef; view: 
   return <Pressable theme={view.theme} accessibilityRole="button" accessibilityLabel={`Add ${title || 'Untitled conversation'}`} onPress={add} style={{ minHeight: view.layout.compact ? 44 : 36, padding: 8 }}><Text numberOfLines={2} style={{ color: view.theme.colors.foreground, fontSize: 12 }}>＋ {title || 'Untitled conversation'}</Text></Pressable>;
 }
 
-function SectionLabel({ view, label, open, toggle }: { view: PluginSidebarViewProps; label: string; open?: boolean; toggle?(): void }) {
+function SectionLabel({ view, label, open, toggle, dense }: { view: PluginSidebarViewProps; label: string; open?: boolean; toggle?(): void; dense?: boolean }) {
   const c = view.theme.colors;
   const text = <Text selectable={false} style={{ flex: 1, color: c.foregroundMuted, fontSize: 12, fontWeight: '500' }}>{label}</Text>;
-  const style = { minHeight: view.layout.compact ? 36 : 28, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 4 } as const;
+  const style = { minHeight: view.layout.compact ? 36 : dense ? 24 : 28, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 4 } as const;
   return toggle ? <Pressable theme={view.theme} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ expanded: open }} onPress={toggle} style={style}>{text}<Disclosure open={!!open} color={c.foregroundMuted} /></Pressable> : <View style={style}>{text}</View>;
 }
 
 const urgency = (state: string) => state === 'permission' || state === 'error' ? 0 : state === 'updated' ? 1 : 2;
 /** What is running, waiting on the user, or finished unread, across every project; quiet subtasks stay with their parent. */
-function ActiveSection({ view, options, row }: { view: PluginSidebarViewProps; options: ConversationOptions; row(reference: AgentRef): ReactNode }) {
-  const [open, setOpen] = useBranchOpen('active');
+function ActiveSection({ view, options, row, dense }: { view: PluginSidebarViewProps; options: ConversationOptions; row(reference: AgentRef): ReactNode; dense?: boolean }) {
+  // A short sidebar starts this folded: its rows also sit at the top of their projects. An explicit open is remembered.
+  const [open, setOpen] = useBranchOpen('active', !dense);
   const active = useSteadyList(useAgents({
     where: agent => ['running', 'permission', 'error', 'updated'].includes(conversationState(agent)) && !quietSubtask(agent) && matchesConversation(agent, { ...options, parents: undefined }),
     orderBy: (a, b) => urgency(conversationState(a)) - urgency(conversationState(b)) || (b.lastActivityAt || '').localeCompare(a.lastActivityAt || ''),
   }));
   if (!active.length) return null;
   return <View style={{ minWidth: 0, marginBottom: 6 }}>
-    <SectionLabel view={view} label={`${t('In progress')} · ${active.length}`} open={open} toggle={() => setOpen(!open)} />
-    <Reveal open={open}>{active.slice(0, view.layout.compact ? 4 : 8).map(row)}</Reveal>
+    <SectionLabel view={view} dense={dense} label={`${t('In progress')} · ${active.length}`} open={open} toggle={() => setOpen(!open)} />
+    <Reveal open={open}>{active.slice(0, dense ? 3 : view.layout.compact ? 4 : 8).map(row)}</Reveal>
+  </View>;
+}
+
+/** Pinned conversations, newest pin first, across every project. They leave the lists below until unpinned. */
+function PinnedSection({ view, options, items, row, dense }: { view: PluginSidebarViewProps; options: ConversationOptions; items: readonly { hostId: string; agentId: string }[]; row(reference: AgentRef): ReactNode; dense?: boolean }) {
+  const [open, setOpen] = useBranchOpen('pinned');
+  const order = new Map(items.map((item, index) => [pinKey(item.hostId, item.agentId), index]));
+  const pinned = useSteadyList(useAgents({
+    where: agent => order.has(pinKey(agent.hostId, agent.id)) && matchesConversation(agent, { ...options, parents: undefined, pinned: undefined }),
+    orderBy: (a, b) => (order.get(pinKey(a.hostId, a.id)) ?? 0) - (order.get(pinKey(b.hostId, b.id)) ?? 0),
+  }));
+  if (!pinned.length) return null;
+  return <View style={{ minWidth: 0, marginBottom: 6 }}>
+    <SectionLabel view={view} dense={dense} label={`${t('Pinned')} · ${pinned.length}`} open={open} toggle={() => setOpen(!open)} />
+    <Reveal open={open}>{pinned.map(row)}</Reveal>
   </View>;
 }
 

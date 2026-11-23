@@ -1,8 +1,8 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const ts=require('typescript');
-function harness({host='local',fail=false,unconfirmed=false,branch='main',dragging=false}={}) {
+function harness({host='local',fail=false,unconfirmed=false,branch='main',dragging=false,pins=null}={}) {
  const calls=[],effects=[],states=[];let cursor=0,tree;
  const jsx=(type,props)=>({type,props});const imports={
-  './i18n':{t:(s,...a)=>s.replace(/\{(\d)\}/g,(_,i)=>String(a[i])),timeLabel:s=>s,useAppLanguage(){}},'./action-dialog':{ActionDialog:'ActionDialog'},'./web':{isSidebarDragging:()=>dragging,showConversationTooltip:()=>()=>{}},'../shared/activity':{activityTime:()=> 'now'},react:{useState(initial){const i=cursor++;if(!(i in states))states[i]=initial;return[states[i],v=>states[i]=typeof v==='function'?v(states[i]):v]},useRef(v){const i=cursor++;if(!(i in states))states[i]={current:v};return states[i]},useEffect(fn){const i=cursor++;if(!(i in states)){states[i]=true;effects.push(fn)}}},
+  './i18n':{t:(s,...a)=>s.replace(/\{(\d)\}/g,(_,i)=>String(a[i])),timeLabel:s=>s,useAppLanguage(){}},'./action-dialog':{ActionDialog:'ActionDialog'},'./pins':{usePins:()=>pins},'./web':{isSidebarDragging:()=>dragging,showConversationTooltip:()=>()=>{}},'../shared/activity':{activityTime:()=> 'now'},react:{useState(initial){const i=cursor++;if(!(i in states))states[i]=initial;return[states[i],v=>states[i]=typeof v==='function'?v(states[i]):v]},useRef(v){const i=cursor++;if(!(i in states))states[i]={current:v};return states[i]},useEffect(fn){const i=cursor++;if(!(i in states)){states[i]=true;effects.push(fn)}}},
   'react/jsx-runtime':{jsx,jsxs:jsx},'react-native':{View:'View',Text:'Text'},'./context-menu':{ContextMenu:'ContextMenu'},'./visuals':{ActionRow:'ActionRow',FeedbackPressable:'Button',Glyph:'Glyph'},'../shared/host-context':{hostContext:'host'},'../shared/conversation-actions':{deleteConversation:'delete',renameConversation:'rename'},
   '@getpaseo/plugin/client/ui':{Modal:Object.assign('Modal',{Content:'Content'}),TextInput:'Input',copyText:async text=>calls.push(['copy',text])},
   '@getpaseo/plugin/client':{useHosts:()=>[{serverId:'local',label:'MacBook'}],useRpc:contract=>contract==='host'?async()=>({hostId:'local'}):contract==='rename'?async input=>{calls.push(['rename-agent',input]);return {renamed:true,title:input.title}}:async input=>{calls.push(['delete',input]);},useAgent:()=>({title:'Test',workspace:{hostId:host,id:'workspace',kind:'workspace',key:'workspace-ref'}}),useWorkspace:()=>({name:'Workspace',directory:'/sample',branch,labels:['work'],pinned:false}),usePaseo:()=>({agents:{ref:ref=>({async setMetadata(){},async archive(){calls.push(['archive-agent',ref]);if(fail)throw Error('Source offline');return {archivedAt:'2026-11-11T00:00:00Z'}}})},workspaces:{ref:ref=>({async archive(){calls.push(['archive-workspace',ref]);return{error:null,archivedAt:unconfirmed?null:'2026-11-11T00:00:00Z'}},async setPinned(value){calls.push(['pin',ref,value])},async setTitle(value){calls.push(['rename',ref,value]);if(fail)throw Error('Source offline');return{title:unconfirmed?'wrong':value}},async setLabel(value,options){calls.push(['label',ref,value,options])}})}})}
@@ -53,4 +53,12 @@ test('copy branch is unavailable when the source workspace has no branch', async
 
 test('long-press More cannot open a menu over an active sidebar drag',()=>{
  const h=harness({dragging:true});assert.doesNotThrow(()=>h.find('More actions for Test').props.onLongPress());h.render();assert.equal(h.nodes().find(n=>n.type==='ContextMenu').props.anchor,null);
+});
+
+test('pin conversation is the first menu item, follows the shared pin state, and reports a failed save',async()=>{
+ const keys=new Set();const toggled=[];let ok=true;const pins={keys,isPinned:ref=>keys.has(ref.hostId+':'+ref.id),async toggle(ref){toggled.push(ref.id);if(ok)keys.has(ref.hostId+':'+ref.id)?keys.delete(ref.hostId+':'+ref.id):keys.add(ref.hostId+':'+ref.id);return ok;}};
+ const h=harness({pins});const menu=()=>h.nodes().find(n=>n.type==='ContextMenu').props.actions;
+ assert.equal(menu()[0].id,'pin-conversation');assert.equal(menu()[0].label,'Pin conversation');
+ menu()[0].onSelect();await new Promise(r=>setImmediate(r));h.render();assert.deepEqual(toggled,['test-id']);assert.equal(menu()[0].label,'Unpin conversation');
+ ok=false;menu()[0].onSelect();await new Promise(r=>setImmediate(r));h.render();assert.ok(h.nodes().some(n=>n.props&&n.props.accessibilityRole==='alert'));
 });

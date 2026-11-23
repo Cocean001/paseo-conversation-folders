@@ -11,6 +11,8 @@ Select **Conversation folders** in **Settings → Sidebar → Sidebar view**. Pa
 ## Use
 
 - The search box at the top filters conversations by title. **In progress** lists what is running, waiting for your approval, or finished but unread, across all projects; fold it from its heading.
+- **Pin conversation** in a conversation's menu keeps it in **Pinned** above everything else, newest pin first, on every device connected to the host. A pinned conversation leaves its project list until you unpin it; search and status filters still find it there.
+- When the sidebar is short (a small window, or many Paseo header and footer items), rows get denser: titles default to one line, **In progress** starts folded to its heading and shows at most three rows when opened, and section headings shrink. A title-line choice or an opened **In progress** is kept.
 - Subtasks a conversation starts are folded under it behind a count. A subtask appears in **In progress** only when it asks for permission, and the count turns amber when a subtask needs approval or failed. Search and status filters list subtasks directly.
 - Titles use two lines on desktop and one on phones; change it per device in **View options → Titles**.
 - In the project view each project shows its latest ten conversations with **Show more** for the rest, and uses the same colored initial tile as Paseo’s own sidebar. Hover a project and press **+** to start a new conversation in it. When sorted by activity or creation time, a project's list is split into Today, Yesterday, Previous 7 days, Previous 30 days, and Older.
