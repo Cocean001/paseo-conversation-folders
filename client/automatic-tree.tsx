@@ -1,6 +1,9 @@
 import { FolderAdd } from './folder-add';
-import { isSidebarDragging } from './web';
+import { isSidebarDragging, touchMenu } from './web';
 import { DragFolderRow, FolderDropTarget } from './folder-drag';
+import { useTouchDrag } from './touch-drag';
+import { useSteadyList } from './steady';
+import { timeBucket, type TimeBucket } from '../shared/activity';
 import { conversationState, aggregateStates, quietSubtask } from '../shared/status';
 import { ConversationDropTarget, type ConversationDestination } from './drag-and-drop';
 import { ConversationViewContext, useConversationView } from './conversation-view';
@@ -31,14 +34,17 @@ function Branch({ stateKey, title, children, view, icon = 'project', tile, actio
   const busy = !!tile && ['running', 'initializing', 'connecting'].includes(state || '');
   const showCount = count !== undefined && options.showCounts;
   const menuBelow = (node: View | null) => node?.measureInWindow((x, y, width, height) => setMenuPoint({ x: x + width - 208, y: y + height + 4 }));
+  const touch = useTouchDrag();
+  const folderSource = folderGroup && destination ? { hostId: destination.hostId, groupId: folderGroup.id, ...(folderGroup.projectKey ? { project: folderGroup } : {}) } : undefined;
+  const openMenu = () => { if (!isSidebarDragging(rowRef.current)) menuBelow(rowRef.current); };
   const idle = showCount || busy ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingRight: 8 }}>{busy && <StatusMark state={state!} theme={view.theme} loadingColor={options.loadingColor} loadingEffect={options.loadingEffect} />}{showCount && <Text selectable={false} style={{ color: c.foregroundMuted, fontSize: 12 }}>{count}</Text>}</View> : undefined;
   const actions = <View style={{ flexDirection: 'row', alignItems: 'center' }}>{action}<Pressable theme={view.theme} focusRef={moreRef} accessibilityRole="button" accessibilityLabel={`${t('More actions')} · ${title}`} accessibilityState={{ expanded: !!menuPoint }} onPress={() => menuBelow(moreRef.current)} style={{ width: size, height: size, borderRadius: 6, alignItems: 'center', justifyContent: 'center' }}><Glyph name="menu" color={c.foregroundMuted} /></Pressable></View>;
   const actionRow = <ActionRow theme={view.theme} active={actionOpen} compact={view.layout.compact} persistent={!hoverAction || actionOpen || !!menuPoint} action={actions} idleAction={idle}>
-    <Pressable theme={view.theme} hoverBackground="transparent" {...(view.layout.platform === 'web' ? { onContextMenu: (event: { preventDefault(): void; stopPropagation(): void; clientX: number; clientY: number }) => { event.preventDefault(); event.stopPropagation(); setMenuPoint({ x: event.clientX, y: event.clientY }); } } : {})} focusRef={rowRef} onLongPress={() => { if (isSidebarDragging(rowRef.current)) return; menuBelow(rowRef.current); }} {...{ onKeyDown: (event: { key: string; shiftKey: boolean; preventDefault(): void }) => { if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) { event.preventDefault(); menuBelow(rowRef.current); } } }} accessibilityRole="button" accessibilityLabel={`Toggle ${title}`} accessibilityState={{ expanded: open }} onPress={() => { if (destination && chooseDestination) chooseDestination(destination); else setOpen(!open); }} style={{ flex: 1, minWidth: 0, minHeight: view.layout.compact ? 44 : 32, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8 }}>
+    <Pressable theme={view.theme} hoverBackground="transparent" {...(view.layout.platform === 'web' ? { onContextMenu: (event: { preventDefault(): void; stopPropagation(): void; clientX: number; clientY: number }) => { event.preventDefault(); event.stopPropagation(); setMenuPoint({ x: event.clientX, y: event.clientY }); } } : {})} focusRef={rowRef} onLongPress={touchMenu(view) ? () => { if (touch && folderSource) touch.lift({ kind: 'folder', value: folderSource }, title, openMenu); else openMenu(); } : undefined} {...{ onKeyDown: (event: { key: string; shiftKey: boolean; preventDefault(): void }) => { if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) { event.preventDefault(); menuBelow(rowRef.current); } } }} accessibilityRole="button" accessibilityLabel={`Toggle ${title}`} accessibilityState={{ expanded: open }} onPress={() => { if (destination && chooseDestination) chooseDestination(destination); else setOpen(!open); }} style={{ flex: 1, minWidth: 0, minHeight: view.layout.compact ? 44 : 32, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8 }}>
       <Disclosure open={open} color={c.foregroundMuted} /><BranchIcon loadingColor={options.loadingColor} loadingEffect={options.loadingEffect} state={state} hasUpdates={hasUpdates} open={open} icon={icon} image={image} color={color} tile={tile} theme={view.theme} />
       <Text selectable={false} numberOfLines={1} style={{ color: c.foreground, fontSize: 14, lineHeight: 20, fontWeight: '600', flex: 1, minWidth: 0 }}>{title}</Text>
     </Pressable></ActionRow>;
-  const branchRow = folderGroup && destination ? <FolderDropTarget hostId={destination.hostId} group={folderGroup} view={view} activate={() => setOpen(true)}><DragFolderRow source={{hostId:destination.hostId,groupId:folderGroup.id,...(folderGroup.projectKey ? {project:folderGroup} : {})}}>{actionRow}</DragFolderRow></FolderDropTarget> : icon === 'server' && destination ? <FolderDropTarget hostId={destination.hostId} root topLevel={false} view={view} activate={() => setOpen(true)}>{actionRow}</FolderDropTarget> : actionRow;
+  const branchRow = folderGroup && destination ? <FolderDropTarget hostId={destination.hostId} group={folderGroup} view={view} activate={() => setOpen(true)}><DragFolderRow source={folderSource!}>{actionRow}</DragFolderRow></FolderDropTarget> : icon === 'server' && destination ? <FolderDropTarget hostId={destination.hostId} root topLevel={false} view={view} activate={() => setOpen(true)}>{actionRow}</FolderDropTarget> : actionRow;
   const contents = <View style={{ marginLeft: 12, minWidth: 0 }}>{children}</View>;
   const branch = <View style={{ minWidth: 0, maxWidth: '100%', marginBottom: 4 }}>
     {destination && destination.groupId === null && !destination.projectKey ? <ConversationDropTarget destination={destination} view={view} activate={() => setOpen(true)}>{branchRow}</ConversationDropTarget> : branchRow}
@@ -66,7 +72,12 @@ function ProjectBranch({ reference, workspaceKeys, view, row, children, excluded
   const [error, setError] = useState<string | null>(null);
   const projectFolder = foldersForHost(reference.hostId).find(group => group.projectKey === workspace?.project.key);
   const memberHosts = projectFolder?.agentIds.map(id => memberRef(reference.hostId, id).hostId) ?? [];
-  const agents = useAgents({ hosts: [...new Set([reference.hostId, ...memberHosts])], where: a => ((workspaceKeys.has(a.workspace.key) && !excluded.has(`${a.hostId}:${a.id}`)) || !!projectFolder && containsMember(projectFolder.agentIds, reference.hostId, a.hostId, a.id)) && matchesConversation(a, options), orderBy: conversationOrder(options, projectFolder?.agentIds ?? unfiledOrder(reference.hostId), reference.hostId) });
+  const inProject = (a: { hostId: string; id: string; workspace: { key: string } }) => (workspaceKeys.has(a.workspace.key) && !excluded.has(`${a.hostId}:${a.id}`)) || !!projectFolder && containsMember(projectFolder.agentIds, reference.hostId, a.hostId, a.id);
+  const agents = useSteadyList(useAgents({ hosts: [...new Set([reference.hostId, ...memberHosts])], where: a => inProject(a) && matchesConversation(a, options), orderBy: conversationOrder(options, projectFolder?.agentIds ?? unfiledOrder(reference.hostId), reference.hostId) }));
+  // Time sections follow the sort field, so each section is one contiguous run of rows.
+  const timeField = options.sortBy === 'activity' ? 'lastActivityAt' : options.sortBy === 'created' ? 'createdAt' : null;
+  const timeGroups = useAgents({ hosts: [...new Set([reference.hostId, ...memberHosts])], where: a => !!timeField && inProject(a) && matchesConversation(a, options), groupBy: a => timeBucket(timeField ? a[timeField] : null) });
+  const bucketOf = new Map(timeGroups.flatMap(group => group.items.map(item => [item.key, group.key as TimeBucket] as const)));
   const agentStates = useAgents({ hosts: [...new Set([reference.hostId, ...memberHosts])], where: agent => (!options.members || options.members.some(member => member.hostId === agent.hostId && member.agentId === agent.id)) && ((workspaceKeys.has(agent.workspace.key) && !excluded.has(`${agent.hostId}:${agent.id}`)) || !!projectFolder && containsMember(projectFolder.agentIds, reference.hostId, agent.hostId, agent.id)) && !quietSubtask(agent), groupBy: agent => conversationState(agent) });
   const projectStatus = aggregateStates(agentStates.map(group => group.key));
   const key = workspace?.project.key;
@@ -134,22 +145,34 @@ function ProjectBranch({ reference, workspaceKeys, view, row, children, excluded
             <View style={{flexDirection:'row',alignItems:'center',gap:8}}><Pressable theme={view.theme} accessibilityRole="button" accessibilityLabel="Close project settings" disabled={saving} onPress={()=>setEditing(false)} style={{minHeight:36,paddingHorizontal:12,justifyContent:'center'}}><Text style={{color:c.foregroundMuted,fontSize:12}}>{t('Cancel')}</Text></Pressable><Pressable theme={view.theme} accessibilityRole="button" disabled={saving} onPress={() => { void save(); }} style={{ minHeight: 36, paddingHorizontal: 12, borderRadius: 4, backgroundColor: c.surface2, justifyContent: 'center' }}><Text style={{ color: c.foreground, fontSize: 12 }}>{saving ? t('Saving…') : t('Save')}</Text></Pressable></View>
           </View>
         </View>}
-      </ScrollView></View></View></Modal>}>{agents.length ? shown.map(agent => row(agent, projectFolder?.id ?? null, reference.hostId, key ? {key,title} : undefined)) : <Text style={{ color: c.foregroundMuted, paddingVertical: 6, paddingLeft: 32, fontSize: 12, lineHeight: 16 }}>{t('Empty')}</Text>}
+      </ScrollView></View></View></Modal>}>{agents.length ? withTimeLabels(shown, bucketOf, !searching, view, agent => row(agent, projectFolder?.id ?? null, reference.hostId, key ? {key,title} : undefined)) : <Text style={{ color: c.foregroundMuted, paddingVertical: 6, paddingLeft: 32, fontSize: 12, lineHeight: 16 }}>{t('Empty')}</Text>}
       {!searching && (showAll ? agents.length > limit : agents.length > shown.length) && <Pressable theme={view.theme} accessibilityRole="button" onPress={() => viewState?.setShowAll(stateKey, !showAll)} style={{ minHeight: view.layout.compact ? 40 : 30, paddingLeft: 32, justifyContent: 'center' }}><Text selectable={false} style={{ color: c.foregroundMuted, fontSize: 13 }}>{showAll ? t('Show less') : t('Show {0} more', agents.length - shown.length)}</Text></Pressable>}{children}</Branch>
     {settings.status === 'error' && <Text style={{ color: c.statusDanger }}>{settings.error}</Text>}
   </View>;
+}
+const timeNames: Record<TimeBucket, string> = { today: 'Today', yesterday: 'Yesterday', week: 'Previous 7 days', month: 'Previous 30 days', older: 'Older' };
+/** A small heading before each time section, shown only when the rows span more than one section. */
+function withTimeLabels(rows: readonly AgentRef[], bucketOf: ReadonlyMap<string, TimeBucket>, enabled: boolean, view: PluginSidebarViewProps, row: (agent: AgentRef) => ReactNode) {
+  const sectioned = enabled && new Set(rows.map(agent => bucketOf.get(agent.key))).size > 1;
+  return rows.flatMap((agent, index) => {
+    const bucket = bucketOf.get(agent.key);
+    const heading = sectioned && bucket && (index === 0 || bucketOf.get(rows[index - 1].key) !== bucket)
+      ? [<Text key={`time:${bucket}:${index}`} selectable={false} accessibilityRole="header" style={{ color: view.theme.colors.foregroundMuted, fontSize: 11, lineHeight: 16, paddingTop: index ? 8 : 2, paddingBottom: 2, paddingLeft: 10 }}>{t(timeNames[bucket])}</Text>]
+      : [];
+    return [...heading, row(agent)];
+  });
 }
 function Projects({ hosts, view, row, excluded = new Set<string>() }: { excluded?: Set<string>; hosts: string[]; view: PluginSidebarViewProps; row(ref: AgentRef, groupId: string | null, folderHostId?: string, project?: {key:string;title:string}): ReactNode }) {
   const { options, foldersForHost } = useConversationView();
   const tabWorkspaces = useAgents({ hosts, where: agent => !options.members || options.members.some(member => member.hostId === agent.hostId && member.agentId === agent.id), groupBy: agent => agent.workspace.key });
   const tabWorkspaceKeys = new Set(tabWorkspaces.map(group=>group.key));
-  const projects = useWorkspaces({ hosts, where: workspace => (!options.members || tabWorkspaceKeys.has(workspace.ref.key)) && (!options.workspaceKeys || options.workspaceKeys.includes(workspace.ref.key)), groupBy: w => ({ key: w.project.key, title: w.projectDisplayName }) });
+  const projects = useSteadyList(useWorkspaces({ hosts, where: workspace => (!options.members || tabWorkspaceKeys.has(workspace.ref.key)) && (!options.workspaceKeys || options.workspaceKeys.includes(workspace.ref.key)), groupBy: w => ({ key: w.project.key, title: w.projectDisplayName }) }));
   if (!projects.length) return <Text style={{ color: view.theme.colors.foregroundMuted, padding: 8, fontSize: 12 }}>{t('No projects')}</Text>;
   return <>{projects.map(p => p.items[0] && !foldersForHost(p.items[0].hostId).some(group => group.projectKey === p.key) && <ProjectBranch key={p.key} reference={p.items[0]} workspaceKeys={new Set(p.items.map(w => w.key))} view={view} row={row} excluded={excluded} />)}</>;
 }
 function ServerChats({ hostId, row, view, excluded = new Set<string>() }: { excluded?: Set<string>; view: PluginSidebarViewProps; hostId: string; row(ref: AgentRef, groupId: string | null, folderHostId?: string, project?: {key:string;title:string}): ReactNode }) {
   const { options, unfiledOrder } = useConversationView();
-  const agents = useAgents({ hosts: [hostId], where: a => !excluded.has(`${a.hostId}:${a.id}`) && matchesConversation(a, options), orderBy: conversationOrder(options, unfiledOrder(hostId)) });
+  const agents = useSteadyList(useAgents({ hosts: [hostId], where: a => !excluded.has(`${a.hostId}:${a.id}`) && matchesConversation(a, options), orderBy: conversationOrder(options, unfiledOrder(hostId)) }));
   return <>{agents.length ? agents.map(agent => row(agent, null)) : <Text style={{ color: view.theme.colors.foregroundMuted, paddingVertical: 6, paddingLeft: 32, fontSize: 12, lineHeight: 16 }}>{t('Empty')}</Text>}</>;
 }
 function HostBranch({ host, mode, view, row, createFolder, groups = [], excluded = new Set<string>(), folderAction }: { folderAction?: FolderAction; excluded?: Set<string>; createFolder(hostId: string, name: string): Promise<boolean>; groups?: Group[]; host: {serverId: string; label: string; status?: string}; mode: 'server' | 'server-project'; view: PluginSidebarViewProps; row(ref: AgentRef, groupId: string | null, folderHostId?: string, project?: {key:string;title:string}): ReactNode }) {
@@ -190,7 +213,7 @@ function HostBranch({ host, mode, view, row, createFolder, groups = [], excluded
 }
 function FolderConversations({ group, hostId, row }: { group: Group; hostId: string; row(ref: AgentRef, groupId: string | null, folderHostId?: string, project?: {key:string;title:string}): ReactNode }) {
   const { options } = useConversationView();
-  const agents = useAgents({ hosts: [...new Set(group.agentIds.map(id => memberRef(hostId, id).hostId))], where: agent => containsMember(group.agentIds, hostId, agent.hostId, agent.id) && matchesConversation(agent, options), orderBy: conversationOrder(options, group.agentIds, hostId) });
+  const agents = useSteadyList(useAgents({ hosts: [...new Set(group.agentIds.map(id => memberRef(hostId, id).hostId))], where: agent => containsMember(group.agentIds, hostId, agent.hostId, agent.id) && matchesConversation(agent, options), orderBy: conversationOrder(options, group.agentIds, hostId) }));
   return <>{agents.map(agent => row(agent, group.id, hostId))}</>;
 }
 function FolderBranch({ group, groups, hostId, view, row, folderAction }: { folderAction?: FolderAction; group: Group; groups: Group[]; hostId: string; view: PluginSidebarViewProps; row(ref: AgentRef, groupId: string | null, folderHostId?: string, project?: {key:string;title:string}): ReactNode }) {

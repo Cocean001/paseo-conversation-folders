@@ -33,6 +33,11 @@ export function showConversationTooltip(element: unknown, data: {title:string; h
   return () => {remove();observer.disconnect();browser.removeEventListener('scroll',remove,true);browser.removeEventListener('resize',remove);};
 }
 
+/** With a mouse, holding a row before moving starts a drag; a long-press menu would open first and cancel it. Right-click and the more button stay. */
+export function touchMenu(view: { layout: { platform: string; compact: boolean } }) {
+  return view.layout.platform !== 'web' || view.layout.compact;
+}
+
 /** Native drag must suppress Pressable's delayed long-press menu. */
 export function isSidebarDragging(element: unknown): boolean {
   if (Platform.OS !== 'web') return false;
