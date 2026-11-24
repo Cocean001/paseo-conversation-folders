@@ -4,7 +4,7 @@ import { ConversationViewContext } from './conversation-view';
 import { FolderDragProvider, DragFolderRow, FolderDropTarget, type DragFolder, type FolderDestination } from './folder-drag';
 import { SidebarTabsView, type SidebarTabScope, type SidebarTabControls } from './sidebar-tabs';
 import { ConversationActions } from './conversation-actions';
-import { touchMenu } from './web';
+import { touchMenu, openPaseoPath, transcriptSearchPath } from './web';
 import { TouchDragProvider, TouchScrollView, useTouchDrag } from './touch-drag';
 import { SteadyProvider, useSteadyList } from './steady';
 import { conversationState, aggregateStates, quietSubtask } from '../shared/status';
@@ -18,7 +18,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, TextInput, View, Platform } from 'react-native';
 import { organization, hostOrganizations, displayPreferences, pinnedConversations } from '../shared/settings';
 import { PinsContext, pinKey, type Pins } from './pins';
-import { hostContext } from '../shared/host-context';
+import { hostContext, transcriptSearch } from '../shared/host-context';
 import { AutomaticTree, ProjectFolder } from './automatic-tree';
 import { removeGroup, relocateGroup, memberId, memberRef, containsMember, applyAssignments, withProjectMembers } from '../shared/model';
 import { t, useAppLanguage } from './i18n';
@@ -124,6 +124,9 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
   const [, setActivityTick] = useState(0);
   useEffect(() => { const timer = setInterval(() => setActivityTick(value => value + 1), 60000); return () => clearInterval(timer); }, []);
   const [search, setSearch] = useState('');
+  const readTranscriptSearch = useRpc(transcriptSearch);
+  const [fullTextSearch, setFullTextSearch] = useState(false);
+  useEffect(() => { let active = true; void readTranscriptSearch({}).then(result => { if (active) setFullTextSearch(result.enabled === true); }).catch(() => {}); return () => { active = false; }; }, [readTranscriptSearch]);
   const [searchFocused, setSearchFocused] = useState(false);
   const [projectFilter, setProjectFilter] = useState<string[]>([]);
   const [labelFilter, setLabelFilter] = useState<string[]>([]);
@@ -358,6 +361,7 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
       <Pressable theme={view.theme} accessibilityRole="button" accessibilityLabel={viewApi?.collapsed ? t('Restore expansion') : t('Collapse all')} onPress={() => { viewApi?.toggleCollapseAll(options.grouping === 'manual' ? [...state.groups.map(group => group.id), 'ungrouped'].map(folderKey) : []); setMenu(null); setPicker(null); }} style={iconButton}><Glyph name={viewApi?.collapsed ? 'expand' : 'collapse'} size={15} color={c.foregroundMuted} /></Pressable>
       <Pressable theme={view.theme} accessibilityRole="button" accessibilityLabel={t('View options')} focusRef={optionsButton} accessibilityState={{ expanded: showOptions }} onPress={() => setShowOptions(v => !v)} style={iconButton}><Glyph name="filter" size={15} color={filtersActive ? c.accent : c.foregroundMuted} /></Pressable>
     </View></FolderDropTarget>
+    {fullTextSearch && !!search.trim() && <Pressable theme={view.theme} accessibilityRole="button" accessibilityLabel={t('Search full transcripts for “{0}”', search.trim())} onPress={() => { openPaseoPath(transcriptSearchPath(ownerHost, search.trim())); view.dismiss(); }} style={{ minHeight: compact ? 44 : 30, marginBottom: 4, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 6 }}><Glyph name="search" size={13} color={c.accent} /><Text selectable={false} numberOfLines={1} style={{ flex: 1, minWidth: 0, color: c.accent, fontSize: compact ? 14 : 13 }}>{t('Search full transcripts for “{0}”', search.trim())}</Text></Pressable>}
     {selected !== null && button('Done', () => setSelected(null))}
     <DropdownMenu anchor={optionsAnchor} close={() => setShowOptions(false)} view={view} busy={savingPreferences || view.tabControls?.saving || preferences.status !== 'ready'} error={preferenceError} items={viewMenu} />
     {options.showTabs !== false && multiHost && <ScrollView horizontal showsHorizontalScrollIndicator={false} accessibilityLabel="Server tabs" contentContainerStyle={{ flexDirection: 'row', gap: 2, paddingHorizontal: 4 }} style={{ flexGrow: 0, minWidth: 0 }}>

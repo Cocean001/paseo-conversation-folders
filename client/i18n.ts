@@ -8,6 +8,7 @@ export const messages = defineTranslations({ resources: {
 // English source text is the key, so untranslated strings fall back to English unchanged.
 const zh: Record<string, string> = {
   'Untitled conversation': '未命名对话', 'Untitled workspace': '未命名工作区', 'Search conversations…': '搜索对话…',
+  'Search full transcripts for “{0}”': '在全文中搜索“{0}”',
   'Loading…': '正在加载…', 'Loading folders…': '正在加载文件夹…', 'Saving…': '正在保存…',
   'New folder': '新建文件夹', 'New folder…': '新建文件夹…', 'New subfolder': '新建子文件夹', 'New subfolder…': '新建子文件夹…',
   'Cancel': '取消', 'Close': '关闭', 'Create': '创建', 'Save': '保存', 'Done': '完成', 'Remove': '移除',

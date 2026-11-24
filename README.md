@@ -16,7 +16,7 @@ Select **Conversation folders** in **Settings → Sidebar → Sidebar view**. Pa
 
 ## Use
 
-- The search box at the top filters conversations by title. **In progress** lists what is running, waiting for your approval, or finished but unread, across all projects; fold it from its heading.
+- The search box at the top filters conversations by title. While it has text and the host runs the Transcript Search plugin, **Search full transcripts for “…”** below it opens that plugin with the same query. **In progress** lists what is running, waiting for your approval, or finished but unread, across all projects; fold it from its heading.
 - **Pin conversation** in a conversation's menu keeps it in **Pinned** above everything else, newest pin first, on every device connected to the host. A pinned conversation leaves its project list until you unpin it; search and status filters still find it there.
 - When the sidebar is short (a small window, or many Paseo header and footer items), rows get denser: titles default to one line, **In progress** shows at most three rows when opened, and section headings shrink.
 - **In progress** starts folded to its heading (with its count) when lists are sorted by latest activity, since its conversations already sit at the top of their projects, and on short sidebars. Opening or folding it yourself is remembered per device, as is a title-line choice.
