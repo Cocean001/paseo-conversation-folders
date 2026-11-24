@@ -430,8 +430,8 @@ function SectionLabel({ view, label, open, toggle, dense }: { view: PluginSideba
 const urgency = (state: string) => state === 'permission' || state === 'error' ? 0 : state === 'updated' ? 1 : 2;
 /** What is running, waiting on the user, or finished unread, across every project; quiet subtasks stay with their parent. */
 function ActiveSection({ view, options, row, dense }: { view: PluginSidebarViewProps; options: ConversationOptions; row(reference: AgentRef): ReactNode; dense?: boolean }) {
-  // A short sidebar starts this folded: its rows also sit at the top of their projects. An explicit open is remembered.
-  const [open, setOpen] = useBranchOpen('active', !dense);
+  // Starts folded when its rows already top their lists (latest activity first) or the sidebar is short. An explicit open is remembered.
+  const [open, setOpen] = useBranchOpen('active', !(dense || (options.sortBy === 'activity' && options.sortDirection === 'desc')));
   const active = useSteadyList(useAgents({
     where: agent => ['running', 'permission', 'error', 'updated'].includes(conversationState(agent)) && !quietSubtask(agent) && matchesConversation(agent, { ...options, parents: undefined }),
     orderBy: (a, b) => urgency(conversationState(a)) - urgency(conversationState(b)) || (b.lastActivityAt || '').localeCompare(a.lastActivityAt || ''),
