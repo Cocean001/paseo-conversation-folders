@@ -4,6 +4,9 @@ export type ConversationFilter = 'all' | 'running' | 'attention' | 'errors';
 export interface ConversationOptions { members?: readonly {hostId:string;agentId:string}[]; parents?: ReadonlySet<string>; pinned?: ReadonlySet<string>; showCounts?: boolean; loadingColor?: string; collapseVersion?: number; allCollapsed?: boolean; freshFolderId?: string; loadingEffect?: 'spinner' | 'orbit' | 'pulse' | 'dots' | 'bars'; sortBy: SortBy; sortDirection: 'asc' | 'desc'; filter: ConversationFilter; search: string; workspaceKeys?: readonly string[] }
 export interface ConversationSnapshot { id: string; hostId: string; title: string | null; status: string; createdAt: string; lastActivityAt: string; requiresAttention: boolean; attentionReason: string | null; workspace?: { key: string }; background?: boolean; parentAgent?: { key: string } | null }
 export const defaultConversationOptions: ConversationOptions = { sortBy: 'activity', sortDirection: 'desc', filter: 'all', search: '' };
+// A prompt that opens with a pasted session id would spend a whole title line on it; search still sees the full title.
+const leadingIds = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[\s,，:：;；、.。-]*)+/i;
+export const shownTitle = (title: string) => title.replace(leadingIds, '').trim() || title;
 export function matchesConversation(agent: ConversationSnapshot, options: ConversationOptions): boolean {
   // Background agents are helpers Paseo keeps out of tabs and lists; orchestrator runs would bury real conversations.
   if (agent.background) return false;

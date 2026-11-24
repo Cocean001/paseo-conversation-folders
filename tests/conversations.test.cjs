@@ -1,6 +1,6 @@
 const { test }=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const ts=require('typescript');
 const mod={exports:{}};new Function('exports',ts.transpileModule(fs.readFileSync(require.resolve('../shared/conversations.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText)(mod.exports);
-const {conversationOrder,matchesConversation,defaultConversationOptions:defaults}=mod.exports;
+const {conversationOrder,matchesConversation,shownTitle,defaultConversationOptions:defaults}=mod.exports;
 const agent=(id,title,createdAt,lastActivityAt,status='idle',requiresAttention=false,attentionReason=null)=>({id,hostId:'local',title,createdAt,lastActivityAt,status,requiresAttention,attentionReason});
 const a=agent('a','Zeta','2026-01-01','2026-02-02');const b=agent('b','Alpha','2026-01-02','2026-02-01','running',true,'permission');
 test('all sort modes honor direction and manual order',()=>{
@@ -37,4 +37,12 @@ test('a pinned conversation leaves the lists below while search and status filte
  assert.equal(matchesConversation(item,{...defaults,pinned}),false);
  assert.equal(matchesConversation(item,{...defaults,pinned,search:'release'}),true);
  assert.equal(matchesConversation(item,{...defaults,pinned:new Set()}),true);
+});
+
+test('titles drop a leading pasted session id for display only',()=>{
+ assert.equal(shownTitle('c9096434-8a5b-488e-af07-10ddf18d4032 关于这个 paseo 对话'),'关于这个 paseo 对话');
+ assert.equal(shownTitle('01a1c024-4d85-7fa2-8f53-7a4419ca6c0c，详细看一下'),'详细看一下');
+ assert.equal(shownTitle('看一下 c9096434-8a5b-488e-af07-10ddf18d4032'),'看一下 c9096434-8a5b-488e-af07-10ddf18d4032');
+ assert.equal(shownTitle('c9096434-8a5b-488e-af07-10ddf18d4032'),'c9096434-8a5b-488e-af07-10ddf18d4032');
+ assert.equal(matchesConversation({id:'x',hostId:'local',title:'c9096434-8a5b-488e-af07-10ddf18d4032 关于',createdAt:'',lastActivityAt:'',status:'idle',requiresAttention:false,attentionReason:null},{...defaults,search:'c9096434'}),true);
 });

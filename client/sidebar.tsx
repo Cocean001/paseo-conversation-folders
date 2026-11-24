@@ -9,7 +9,7 @@ import { TouchDragProvider, TouchScrollView, useTouchDrag } from './touch-drag';
 import { SteadyProvider, useSteadyList } from './steady';
 import { conversationState, aggregateStates, quietSubtask } from '../shared/status';
 import { ConversationDragProvider, DragConversationRow, ConversationDropTarget, type DragConversation, type ConversationDestination } from './drag-and-drop';
-import { conversationOrder, matchesConversation, defaultConversationOptions, type ConversationOptions } from '../shared/conversations';
+import { conversationOrder, matchesConversation, defaultConversationOptions, shownTitle, type ConversationOptions } from '../shared/conversations';
 import { DropdownMenu, type DropdownAnchor, type DropdownItem } from './dropdown-menu';
 import type { AgentRef, PluginSidebarViewProps } from '@getpaseo/plugin/client';
 import { useAgent, useAgents, useHosts, useSettings, useRpc, useWorkspaces } from '@getpaseo/plugin/client';
@@ -37,11 +37,11 @@ function ConversationRow({ reference, view, select, moving, detailed, serverLabe
   const c = view.theme.colors;
   const selected = view.active.agent?.key === reference.key;
   return <ConversationActions reference={reference} view={view}>{openActions => <View style={{ ...feedback, flexDirection: 'row', alignItems: 'center', minWidth: 0, borderRadius: 6, paddingVertical: 0 }}>
-    <Pressable theme={view.theme} hoverBackground="transparent" accessibilityState={{ selected }} accessibilityRole="button" accessibilityLabel={agent.title || t('Untitled conversation')} onPress={() => view.navigation.openAgent(reference)} onLongPress={moving ? () => select(reference.id) : touchMenu(view) ? () => { if (touch && drag) touch.lift({ kind: 'conversation', value: drag }, agent.title || t('Untitled conversation'), openActions); else openActions(); } : undefined} style={() => ({ flex: 1, minWidth: 0, minHeight: view.layout.compact ? 44 : 32, paddingLeft: 10, paddingRight: 6, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'transparent', borderRadius: 6 })}>
+    <Pressable theme={view.theme} hoverBackground="transparent" accessibilityState={{ selected }} accessibilityRole="button" accessibilityLabel={agent.title || t('Untitled conversation')} onPress={() => view.navigation.openAgent(reference)} onLongPress={moving ? () => select(reference.id) : touchMenu(view) ? () => { if (touch && drag) touch.lift({ kind: 'conversation', value: drag }, agent.title ? shownTitle(agent.title) : t('Untitled conversation'), openActions); else openActions(); } : undefined} style={() => ({ flex: 1, minWidth: 0, minHeight: view.layout.compact ? 44 : 32, paddingLeft: 10, paddingRight: 6, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'transparent', borderRadius: 6 })}>
       {/* Inside a parent, a finished unread subtask is not news; running, permission and error still show. */}
       <StatusMark loadingColor={loadingColor} loadingEffect={loadingEffect} state={nested && conversationState(agent) === 'updated' ? 'finished' : conversationState(agent)} theme={view.theme} />
       <View style={{ flex: 1, minWidth: 0, paddingVertical: serverLabel || detailed ? 4 : 0 }}>
-        <Text selectable={false} numberOfLines={detailed ? 2 : 1} style={{ color: nested ? c.foregroundMuted : c.foreground, fontSize: nested ? 13 : 14, lineHeight: nested ? 18 : 20, fontWeight: selected ? '600' : '400' }}>{agent.title || t('Untitled conversation')}</Text>
+        <Text selectable={false} numberOfLines={detailed ? 2 : 1} style={{ color: nested ? c.foregroundMuted : c.foreground, fontSize: nested ? 13 : 14, lineHeight: nested ? 18 : 20, fontWeight: selected ? '600' : '400' }}>{agent.title ? shownTitle(agent.title) : t('Untitled conversation')}</Text>
         {serverLabel && <Text selectable={false} numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 11, lineHeight: 15 }}>{serverLabel}</Text>}
       </View>
 
