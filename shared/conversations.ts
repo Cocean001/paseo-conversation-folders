@@ -18,6 +18,7 @@ export function matchesConversation(agent: ConversationSnapshot, options: Conver
   if (options.filter === 'errors') return agent.status === 'error' || agent.attentionReason === 'error';
   return true;
 }
+const isRunning = (agent: ConversationSnapshot) => agent.status === 'running' || agent.status === 'initializing';
 export function conversationOrder(options: ConversationOptions, order: readonly string[] = [], ownerHost?: string) {
   const ranks = new Map(order.map((id, index) => [id, index]));
   return (a: ConversationSnapshot, b: ConversationSnapshot): number => {
@@ -25,6 +26,13 @@ export function conversationOrder(options: ConversationOptions, order: readonly 
       const rankA = ranks.get(ownerHost ? (ownerHost === a.hostId ? a.id : `host-agent:${JSON.stringify([a.hostId, a.id])}`) : a.id) ?? Number.MAX_SAFE_INTEGER, rankB = ranks.get(ownerHost ? (ownerHost === b.hostId ? b.id : `host-agent:${JSON.stringify([b.hostId, b.id])}`) : b.id) ?? Number.MAX_SAFE_INTEGER;
       if (rankA !== rankB) return rankA - rankB;
       return a.id.localeCompare(b.id);
+    }
+    if (options.sortBy === 'activity') {
+      // A running conversation's last activity moves on every message, so several running ones would keep swapping.
+      // Running ones count as the newest activity and keep their creation order among themselves.
+      const runningA = isRunning(a), runningB = isRunning(b);
+      if (runningA !== runningB) return (runningA ? -1 : 1) * (options.sortDirection === 'desc' ? 1 : -1);
+      if (runningA) { const created = (a.createdAt || '').localeCompare(b.createdAt || ''); return (options.sortDirection === 'desc' ? -created : created) || a.id.localeCompare(b.id); }
     }
     const field = options.sortBy === 'title' ? 'title' : options.sortBy === 'created' ? 'createdAt' : 'lastActivityAt';
     const compared = (a[field] || '').localeCompare(b[field] || '', undefined, { numeric: true, sensitivity: 'base' });

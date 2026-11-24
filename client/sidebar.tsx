@@ -137,7 +137,7 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
   const allAgents = useAgents({ where: agent => !agent.background });
   // Subtasks nest under a parent that is itself listed; children of hidden parents stay top-level.
   const parents = new Set(allAgents.filter(agent => !tabScope || tabScope.tab.members.some(member => member.hostId === agent.hostId && member.agentId === agent.id)).map(agent => agent.key));
-  const subtaskGroups = useSteadyList(useAgents({ where: agent => !agent.background && !!agent.parentAgent, groupBy: agent => agent.parentAgent!.key, orderBy: ['lastActivityAt', 'desc'] }));
+  const subtaskGroups = useSteadyList(useAgents({ where: agent => !agent.background && !!agent.parentAgent, groupBy: agent => agent.parentAgent!.key, orderBy: latestFirst }));
   const alertedParents = new Set(useAgents({ where: agent => !agent.background && !!agent.parentAgent && ['permission', 'error'].includes(conversationState(agent)), groupBy: agent => agent.parentAgent!.key }).map(group => group.key));
   const conversationOptions: ConversationOptions = { parents, pinned: pinnedKeys, ...(tabScope ? {members:tabScope.tab.members} : {}), ...defaultConversationOptions, ...options, search, workspaceKeys, freshFolderId };
   // Long first-prompt titles read better on two lines where there is room; each device can choose.
@@ -427,6 +427,7 @@ function SectionLabel({ view, label, open, toggle, dense }: { view: PluginSideba
   return toggle ? <Pressable theme={view.theme} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ expanded: open }} onPress={toggle} style={style}>{text}<Disclosure open={!!open} color={c.foregroundMuted} /></Pressable> : <View style={style}>{text}</View>;
 }
 
+const latestFirst = conversationOrder(defaultConversationOptions);
 const urgency = (state: string) => state === 'permission' || state === 'error' ? 0 : state === 'updated' ? 1 : 2;
 /** What is running, waiting on the user, or finished unread, across every project; quiet subtasks stay with their parent. */
 function ActiveSection({ view, options, row, dense }: { view: PluginSidebarViewProps; options: ConversationOptions; row(reference: AgentRef): ReactNode; dense?: boolean }) {
@@ -434,7 +435,7 @@ function ActiveSection({ view, options, row, dense }: { view: PluginSidebarViewP
   const [open, setOpen] = useBranchOpen('active', !(dense || (options.sortBy === 'activity' && options.sortDirection === 'desc')));
   const active = useSteadyList(useAgents({
     where: agent => ['running', 'permission', 'error', 'updated'].includes(conversationState(agent)) && !quietSubtask(agent) && matchesConversation(agent, { ...options, parents: undefined }),
-    orderBy: (a, b) => urgency(conversationState(a)) - urgency(conversationState(b)) || (b.lastActivityAt || '').localeCompare(a.lastActivityAt || ''),
+    orderBy: (a, b) => urgency(conversationState(a)) - urgency(conversationState(b)) || latestFirst(a, b),
   }));
   if (!active.length) return null;
   return <View style={{ minWidth: 0, marginBottom: 6 }}>

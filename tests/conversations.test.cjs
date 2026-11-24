@@ -4,7 +4,13 @@ const {conversationOrder,matchesConversation,defaultConversationOptions:defaults
 const agent=(id,title,createdAt,lastActivityAt,status='idle',requiresAttention=false,attentionReason=null)=>({id,hostId:'local',title,createdAt,lastActivityAt,status,requiresAttention,attentionReason});
 const a=agent('a','Zeta','2026-01-01','2026-02-02');const b=agent('b','Alpha','2026-01-02','2026-02-01','running',true,'permission');
 test('all sort modes honor direction and manual order',()=>{
- for(const [sortBy,sortDirection,expected] of [['activity','desc',['a','b']],['activity','asc',['b','a']],['created','desc',['b','a']],['title','asc',['b','a']],['title','desc',['a','b']],['manual','desc',['b','a']]])assert.deepEqual([a,b].sort(conversationOrder({...defaults,sortBy,sortDirection},['b','a'])).map(a=>a.id),expected);
+ for(const [sortBy,sortDirection,expected] of [['activity','desc',['b','a']],['activity','asc',['a','b']],['created','desc',['b','a']],['title','asc',['b','a']],['title','desc',['a','b']],['manual','desc',['b','a']]])assert.deepEqual([a,b].sort(conversationOrder({...defaults,sortBy,sortDirection},['b','a'])).map(a=>a.id),expected);
+});
+test('running conversations stay above the rest and keep creation order while their activity moves',()=>{
+ const r1=agent('r1','One','2026-03-01','2026-03-05T10:00:01','running'),r2=agent('r2','Two','2026-03-02','2026-03-05T10:00:00','running'),done=agent('d','Done','2026-03-03','2026-03-05T10:00:02');
+ const order=list=>list.sort(conversationOrder(defaults)).map(x=>x.id);
+ assert.deepEqual(order([r1,r2,done]),['r2','r1','d']);
+ r1.lastActivityAt='2026-03-05T10:00:09';assert.deepEqual(order([done,r2,r1]),['r2','r1','d']);
 });
 test('status filters combine with case-insensitive title search',()=>{
  assert.equal(matchesConversation(a,{...defaults,search:' zEtA '}),true);assert.equal(matchesConversation(b,{...defaults,search:'Zeta'}),false);
