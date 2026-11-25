@@ -222,9 +222,13 @@ test('dropping a conversation into a project keeps that project at its on-screen
   assert.equal(h.owner.values.assignments.at(-1).groupId, h.owner.values.groups[0].id);
  } finally { extraWorkspaces = []; }
 });
-test('tablets in the app default to one-line titles like phones', async () => {
- const h = harness([], { compact: false, platform: 'ios' }); await new Promise(r => setImmediate(r)); h.render();
- assert.equal(h.nodes().find(n => n.type === 'DropdownMenu').props.items.find(item => item.id === 'titles').value, 'Single line');
+test('tablets in the app default to one-line titles like phones, and two lines in a narrow docked sidebar', async () => {
+ const h = harness([], { compact: false, platform: 'android' }); await new Promise(r => setImmediate(r)); h.render();
+ const titles = () => h.nodes().find(n => n.type === 'DropdownMenu').props.items.find(item => item.id === 'titles').value;
+ const layout = size => { h.nodes().find(n => n.type === 'ScrollView' && n.props.onLayout).props.onLayout({ nativeEvent: { layout: size } }); h.render(); };
+ assert.equal(titles(), 'Single line');
+ layout({ width: 240, height: 800 }); assert.equal(titles(), 'Two lines');
+ layout({ width: 320, height: 800 }); assert.equal(titles(), 'Single line');
 });
 test('a short sidebar switches default titles to one line; an explicit choice still wins', async () => {
  const h = harness(); await new Promise(r => setImmediate(r)); h.render();

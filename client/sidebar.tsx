@@ -108,6 +108,9 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
   // A short sidebar (a small window, or many header and footer items) gets denser rows so conversations stay in view.
   const [listHeight, setListHeight] = useState(0);
   const short = listHeight > 0 && listHeight < 560;
+  // Paseo docks a 240-point sidebar in a portrait small tablet; one line there shows only a few words of a title.
+  const [listWidth, setListWidth] = useState(0);
+  const narrow = listWidth > 0 && listWidth < 280;
   const [freshFolderId, setFreshFolderId] = useState<string | undefined>();
   const [selected, setSelected] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
@@ -146,7 +149,7 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
   const alertedParents = new Set(useAgents({ where: agent => !agent.background && !!agent.parentAgent && ['permission', 'error'].includes(conversationState(agent)), groupBy: agent => agent.parentAgent!.key }).map(group => group.key));
   const conversationOptions: ConversationOptions = { parents, pinned: pinnedKeys, ...(tabScope ? {members:tabScope.tab.members} : {}), ...defaultConversationOptions, ...options, search, workspaceKeys, freshFolderId };
   // Long first-prompt titles read better on two lines where there is room; each device can choose.
-  const titleLines = viewApi?.titleLines ?? (options.multilineTitles ? 2 : touchMenu(view) || short ? 1 : 2);
+  const titleLines = viewApi?.titleLines ?? (options.multilineTitles || narrow && !short ? 2 : touchMenu(view) || short ? 1 : 2);
   const detailed = titleLines === 2;
   const setTitleLines = (lines: number) => { if (viewApi) viewApi.setTitleLines(lines); else void option({ multilineTitles: lines === 2 }); };
   const nesting = !search.trim() && conversationOptions.filter === 'all';
@@ -357,7 +360,7 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
   ];
   const compact = view.layout.compact;
   const iconButton = { width: compact ? 40 : 28, height: compact ? 40 : 28, borderRadius: 6, alignItems: 'center', justifyContent: 'center' } as const;
-  return <PinsContext.Provider value={pins}><FolderDragProvider groups={hostId => rawHostState(hostId)?.groups ?? []} move={dropFolder}><ConversationDragProvider move={dropConversation}><TouchDragProvider enabled={touchMenu(view)} view={view}><TouchScrollView onLayout={event => setListHeight(event.nativeEvent.layout.height)} style={{ flex: 1, minWidth: 0, width: '100%' }} contentContainerStyle={{ paddingHorizontal: 8, paddingTop: 6, paddingBottom: 12, gap: 1, minWidth: 0 }} keyboardShouldPersistTaps="handled">
+  return <PinsContext.Provider value={pins}><FolderDragProvider groups={hostId => rawHostState(hostId)?.groups ?? []} move={dropFolder}><ConversationDragProvider move={dropConversation}><TouchDragProvider enabled={touchMenu(view)} view={view}><TouchScrollView onLayout={event => { setListHeight(event.nativeEvent.layout.height); setListWidth(event.nativeEvent.layout.width); }} style={{ flex: 1, minWidth: 0, width: '100%' }} contentContainerStyle={{ paddingHorizontal: 8, paddingTop: 6, paddingBottom: 12, gap: 1, minWidth: 0 }} keyboardShouldPersistTaps="handled">
     <FolderDropTarget hostId={targetHost!} root anyHost view={view}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, minWidth: 0, marginBottom: 6 }}>
       <View style={{ flex: 1, minWidth: 0, height: compact ? 40 : 30, flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 9, borderRadius: 7, borderWidth: 1, borderColor: searchFocused ? c.accent : c.border, backgroundColor: c.surface0 }}>
         <Glyph name="search" size={13} color={c.foregroundMuted} />
