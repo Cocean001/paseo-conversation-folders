@@ -37,7 +37,7 @@ function ConversationRow({ reference, view, select, moving, detailed, serverLabe
   const c = view.theme.colors;
   const selected = view.active.agent?.key === reference.key;
   return <ConversationActions reference={reference} view={view}>{openActions => <View style={{ ...feedback, flexDirection: 'row', alignItems: 'center', minWidth: 0, borderRadius: 6, paddingVertical: 0 }}>
-    <Pressable theme={view.theme} hoverBackground="transparent" accessibilityState={{ selected }} accessibilityRole="button" accessibilityLabel={agent.title || t('Untitled conversation')} onPress={() => view.navigation.openAgent(reference)} onLongPress={moving ? () => select(reference.id) : touchMenu(view) ? () => { if (touch && drag) touch.lift({ kind: 'conversation', value: drag }, agent.title ? shownTitle(agent.title) : t('Untitled conversation'), openActions); else openActions(); } : undefined} style={() => ({ flex: 1, minWidth: 0, minHeight: view.layout.compact ? 44 : 32, paddingLeft: 10, paddingRight: 6, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'transparent', borderRadius: 6 })}>
+    <Pressable theme={view.theme} hoverBackground="transparent" accessibilityState={{ selected }} accessibilityRole="button" accessibilityLabel={agent.title || t('Untitled conversation')} onPress={() => view.navigation.openAgent(reference)} onLongPress={moving ? () => select(reference.id) : touchMenu(view) ? () => { if (touch && drag) touch.lift({ kind: 'conversation', value: drag }, agent.title ? shownTitle(agent.title) : t('Untitled conversation'), openActions); else openActions(); } : undefined} style={() => ({ flex: 1, minWidth: 0, minHeight: touchMenu(view) ? 44 : 32, paddingLeft: 10, paddingRight: 6, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'transparent', borderRadius: 6 })}>
       {/* Inside a parent, a finished unread subtask is not news; running, permission and error still show. */}
       <StatusMark loadingColor={loadingColor} loadingEffect={loadingEffect} state={nested && conversationState(agent) === 'updated' ? 'finished' : conversationState(agent)} theme={view.theme} />
       <View style={{ flex: 1, minWidth: 0, paddingVertical: serverLabel || detailed ? 4 : 0 }}>
@@ -46,7 +46,7 @@ function ConversationRow({ reference, view, select, moving, detailed, serverLabe
       </View>
 
     </Pressable>
-    {subtasks && <Pressable theme={view.theme} accessibilityRole="button" accessibilityLabel={t('{0} subtasks', subtasks.count)} accessibilityState={{ expanded: subtasks.open }} onPress={subtasks.toggle} style={{ minHeight: view.layout.compact ? 40 : 24, paddingHorizontal: 6, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 3 }}><Glyph name="subtask" size={12} color={subtasks.alert ? c.statusWarning : c.foregroundMuted} /><Text selectable={false} style={{ color: subtasks.alert ? c.statusWarning : c.foregroundMuted, fontSize: 12 }}>{subtasks.count}</Text></Pressable>}
+    {subtasks && <Pressable theme={view.theme} accessibilityRole="button" accessibilityLabel={t('{0} subtasks', subtasks.count)} accessibilityState={{ expanded: subtasks.open }} onPress={subtasks.toggle} style={{ minHeight: touchMenu(view) ? 40 : 24, paddingHorizontal: 6, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 3 }}><Glyph name="subtask" size={12} color={subtasks.alert ? c.statusWarning : c.foregroundMuted} /><Text selectable={false} style={{ color: subtasks.alert ? c.statusWarning : c.foregroundMuted, fontSize: 12 }}>{subtasks.count}</Text></Pressable>}
     {moving && <Pressable theme={view.theme} accessibilityRole="button" accessibilityLabel={`Move ${agent.title ?? t('Untitled conversation')}`} onPress={() => select(reference.id)} style={{ padding: 8, minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' }}><Glyph name="move" color={c.foregroundMuted} /></Pressable>}
   </View>}</ConversationActions>;
 }
@@ -146,7 +146,7 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
   const alertedParents = new Set(useAgents({ where: agent => !agent.background && !!agent.parentAgent && ['permission', 'error'].includes(conversationState(agent)), groupBy: agent => agent.parentAgent!.key }).map(group => group.key));
   const conversationOptions: ConversationOptions = { parents, pinned: pinnedKeys, ...(tabScope ? {members:tabScope.tab.members} : {}), ...defaultConversationOptions, ...options, search, workspaceKeys, freshFolderId };
   // Long first-prompt titles read better on two lines where there is room; each device can choose.
-  const titleLines = viewApi?.titleLines ?? (options.multilineTitles ? 2 : view.layout.compact || short ? 1 : 2);
+  const titleLines = viewApi?.titleLines ?? (options.multilineTitles ? 2 : touchMenu(view) || short ? 1 : 2);
   const detailed = titleLines === 2;
   const setTitleLines = (lines: number) => { if (viewApi) viewApi.setTitleLines(lines); else void option({ multilineTitles: lines === 2 }); };
   const nesting = !search.trim() && conversationOptions.filter === 'all';

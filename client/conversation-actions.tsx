@@ -1,5 +1,5 @@
 import { ActionDialog } from './action-dialog';
-import { showConversationTooltip, isSidebarDragging } from './web';
+import { showConversationTooltip, isSidebarDragging, touchMenu } from './web';
 import { activityTime } from '../shared/activity';
 import { hostContext } from '../shared/host-context';
 import { deleteConversation, renameConversation } from '../shared/conversation-actions';
@@ -102,7 +102,8 @@ export function ConversationActions({ reference, view, children }: { reference: 
     onKeyDown: (event: { key: string; shiftKey: boolean; preventDefault(): void; stopPropagation(): void }) => { if (event.key === 'ContextMenu' || event.shiftKey && event.key === 'F10') { event.preventDefault(); event.stopPropagation(); row.current?.measureInWindow((x,y,width,height) => setAnchor({x:x+width-208,y:y+height})); } },
   } : {};
   return <View ref={row} style={{ minWidth: 0, paddingVertical: 2 }} onPointerEnter={event => { if(event.nativeEvent.pointerType !== 'touch')setHovered(true); }} onPointerLeave={() => setHovered(false)} {...contextEvents}>
-    <ActionRow idleAction={view.layout.compact ? undefined : time} selected={view.active.agent?.key === reference.key} theme={view.theme} compact={view.layout.compact} active={!!anchor} persistent={!!anchor} action={view.layout.compact ? time : <View style={{flexDirection:'row',alignItems:'center'}}>
+    {/* Touch screens, tablets included, have no hover: rows show the time and long-press opens the menu. */}
+    <ActionRow idleAction={touchMenu(view) ? undefined : time} selected={view.active.agent?.key === reference.key} theme={view.theme} compact={view.layout.compact} active={!!anchor} persistent={!!anchor} action={touchMenu(view) ? time : <View style={{flexDirection:'row',alignItems:'center'}}>
       <FeedbackPressable theme={view.theme} hoverBackground="transparent" accessibilityRole="button" accessibilityLabel={`Archive ${title}`} disabled={busy || !agent} onPress={() => edit('archive-agent')} style={{width:24,minHeight:30,alignItems:'center',justifyContent:'center'}}><Glyph name="archive" size={14} color={c.foregroundMuted} /></FeedbackPressable>
       <FeedbackPressable focusRef={more} theme={view.theme} hoverBackground="transparent" accessibilityRole="button" accessibilityLabel={`More actions for ${title}`} accessibilityState={{ expanded:!!anchor, disabled:busy }} disabled={busy} onPress={open} onLongPress={open} style={{ width:24, minHeight:30, alignItems:'center', justifyContent:'center' }}><Glyph name="moreVertical" size={13} color={c.foregroundMuted} /></FeedbackPressable>
     </View>}>
