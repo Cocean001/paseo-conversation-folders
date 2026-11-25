@@ -79,6 +79,8 @@ export const loadingEffects: ReadonlyArray<{ id: LoadingEffect; label: string }>
 ];
 /** One small loop per visible indicator, stopped on unmount and reduced motion. */
 export function LoadingMark({ effect = 'spinner', color = '#4F86F7' }: { effect?: LoadingEffect; color?: string }) {
+  // Android draws a 12-point ActivityIndicator as a growing and shrinking arc that reads as a broken dot; a turning ring reads as busy.
+  const ring = Platform.OS === 'android';
   const progress = useRef(new Animated.Value(0)).current;
   const [reduced, setReduced] = useState(true);
   useEffect(() => {
@@ -87,16 +89,16 @@ export function LoadingMark({ effect = 'spinner', color = '#4F86F7' }: { effect?
     const update = (reduce: boolean) => {
       if (!mounted) return;
       setReduced(reduce); loop?.stop(); progress.setValue(0);
-      if (!reduce && effect !== 'spinner') { loop = Animated.loop(Animated.timing(progress, { toValue: 1, duration: effect === 'pulse' ? 1400 : 1100, easing: Easing.linear, useNativeDriver: false })); loop.start(); }
+      if (!reduce && (effect !== 'spinner' || ring)) { loop = Animated.loop(Animated.timing(progress, { toValue: 1, duration: effect === 'pulse' ? 1400 : 1100, easing: Easing.linear, useNativeDriver: false })); loop.start(); }
     };
     void AccessibilityInfo.isReduceMotionEnabled().then(update);
     const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', update);
     return () => { mounted = false; loop?.stop(); subscription.remove(); };
-  }, [effect, progress]);
+  }, [effect, progress, ring]);
   const wave = (index: number, low: number, high: number) => progress.interpolate({ inputRange: [0, .2, .4, .6, .8, 1], outputRange: Array.from({ length: 6 }, (_, step) => [low, high, low, low, low][(step + 5 - index) % 5]) });
   const dot = { width: 3, height: 3, borderRadius: 2, backgroundColor: color };
   return <View accessibilityLabel={`Loading: ${effect}`} style={{ width: 14, height: 14, alignItems: 'center', justifyContent: 'center' }}>
-    {effect === 'spinner' ? reduced ? <View style={{ width: 11, height: 11, borderRadius: 6, borderWidth: 1.5, borderColor: color, borderRightColor: 'transparent' }} /> : <ActivityIndicator size={12} color={color} /> :
+    {effect === 'spinner' ? reduced || ring ? <Animated.View style={{ width: 11, height: 11, borderRadius: 6, borderWidth: 1.5, borderColor: color, borderRightColor: 'transparent', transform: [{ rotate: reduced ? '0deg' : progress.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }] }} /> : <ActivityIndicator size={12} color={color} /> :
     effect === 'orbit' ? <Animated.View style={{ width: 12, height: 12, borderRadius: 6, borderWidth: 1, borderColor: color, transform: [{ rotate: progress.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }] }}><View style={{ ...dot, position: 'absolute', top: -2, left: 4 }} /></Animated.View> :
     effect === 'pulse' ? <Animated.View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color, opacity: reduced ? .7 : progress.interpolate({ inputRange: [0, .5, 1], outputRange: [.3, 1, .3] }), transform: [{ scale: reduced ? 1 : progress.interpolate({ inputRange: [0, .5, 1], outputRange: [.75, 1, .75] }) }] }} /> :
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>{[0, 1, 2].map(index => <Animated.View key={index} style={effect === 'dots' ? { ...dot, opacity: reduced ? .7 : wave(index, .25, 1) } : { width: 2, height: 11, borderRadius: 1, backgroundColor: color, transform: [{ scaleY: reduced ? .65 : wave(index, .35, 1) }] }} />)}</View>}
