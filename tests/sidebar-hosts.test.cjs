@@ -86,14 +86,19 @@ test('cross-host moves save qualified membership and preserve original host data
  assert.deepEqual(h.owner.values.assignments,[{hostId:'remote',agentId:'chat',folderHostId:'local',groupId:'local-folder'}]);
  const tree=()=>{h.prefs.values.grouping='server-project';h.render();return h.nodes().find(n=>n.type==='AutomaticTree')};
  assert.deepEqual(tree().props.foldersForHost('local')[0].agentIds,['host-agent:["remote","chat"]']);
- assert.equal(await move()({hostId:'local',agentId:'chat'},{hostId:'local',groupId:'local-folder',beforeId:'chat',beforeHostId:'remote'}),true);h.render();assert.deepEqual(tree().props.foldersForHost('local')[0].agentIds,['chat','host-agent:["remote","chat"]']);assert.equal(h.prefs.values.sortBy,'manual');
+ h.prefs.values.sortBy='manual';assert.equal(await move()({hostId:'local',agentId:'chat'},{hostId:'local',groupId:'local-folder',beforeId:'chat',beforeHostId:'remote'}),true);h.render();assert.deepEqual(tree().props.foldersForHost('local')[0].agentIds,['chat','host-agent:["remote","chat"]']);assert.equal(h.prefs.values.sortBy,'manual');
  h.owner.save=async()=>false;assert.equal(await move()({hostId:'remote',agentId:'chat'},{hostId:'local',groupId:null}),false);h.render();assert.equal(h.owner.values.assignments.length,2);assert.ok(h.nodes().some(n=>n.props.accessibilityRole==='alert'));
 });
 
-test('failed custom-order preference reports partial success without losing saved move',async()=>{
- const h=harness();await new Promise(r=>setImmediate(r));h.render();h.prefs.save=async()=>false;
+test('automatic sorting: a drop never switches every device to custom order, and a drop into its own list writes nothing',async()=>{
+ const h=harness();await new Promise(r=>setImmediate(r));h.render();const sortBy=h.prefs.values.sortBy;assert.notEqual(sortBy,'manual');
  const move=h.nodes().find(n=>n.type==='ConversationDragProvider').props.move;
- assert.equal(await move({hostId:'local',agentId:'a'},{hostId:'local',groupId:'local-folder',beforeId:'b'}),true);h.render();assert.equal(h.owner.values.assignments[0].agentId,'a');assert.ok(h.nodes().some(n=>n.props.accessibilityRole==='alert'&&String(n.props.children).includes('custom order could not be enabled')));
+ const hint=()=>h.nodes().some(n=>n.props.accessibilityRole==='alert'&&String(n.props.children).includes('sorted automatically'));
+ assert.equal(await move({hostId:'local',agentId:'a'},{hostId:'local',groupId:'local-folder',beforeId:'b'}),true);h.render();
+ assert.deepEqual(h.owner.values.assignments.map(a=>[a.agentId,a.groupId,a.beforeId]),[['a','local-folder',undefined]]);assert.equal(h.prefs.values.sortBy,sortBy);assert.ok(hint());
+ const before=JSON.stringify(h.owner.values);
+ assert.equal(await move({hostId:'local',agentId:'a',from:{hostId:'local',groupId:'local-folder'}},{hostId:'local',groupId:'local-folder',beforeId:'c'}),false);h.render();
+ assert.equal(JSON.stringify(h.owner.values),before);assert.equal(h.prefs.values.sortBy,sortBy);
 });
 
 

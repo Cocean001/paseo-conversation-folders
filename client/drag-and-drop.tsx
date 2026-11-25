@@ -4,7 +4,8 @@ import { Platform, View } from 'react-native';
 import type { PluginSidebarViewProps } from '@getpaseo/plugin/client';
 import { useTouchDrag } from './touch-drag';
 import { useSteadyControl } from './steady';
-export interface DragConversation { hostId: string; agentId: string }
+/** `from` is the list the row sits in, so a drop back into that list can be told apart from a move. */
+export interface DragConversation { hostId: string; agentId: string; from?: { hostId: string; groupId: string | null; projectKey?: string } }
 export interface ConversationDestination { hostId: string; groupId: string | null; beforeId?: string; beforeHostId?: string; projectKey?: string; projectTitle?: string }
 const MIME = 'application/x-paseo-conversation-folder';
 interface Transfer { types: readonly string[]; effectAllowed: string; dropEffect: string; setData(type: string, data: string): void; getData(type: string): string }

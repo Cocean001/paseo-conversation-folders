@@ -114,6 +114,8 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
   const [draft, setDraft] = useState('');
   const [folderSaving, setFolderSaving] = useState(false);
   const [folderError, setFolderError] = useState<string | null>(null);
+  const [sortHint, setSortHint] = useState(false);
+  useEffect(() => { if (!sortHint) return; const timer = setTimeout(() => setSortHint(false), 8000); return () => clearTimeout(timer); }, [sortHint]);
   const folderRevision = useRef<{ hostId: string; revision: string } | null>(null);
   const [folderFocused, setFolderFocused] = useState(false);
   const folderInput = useRef<TextInput>(null);
@@ -215,9 +217,14 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
     if (!current || (!destination.projectKey && groupId !== null && !current.groups.some(group => group.id === groupId))) { setFolderError('This folder is no longer available.'); return false; }
     if (groupId === null && source.hostId !== destination.hostId) { setFolderError('Unfiled belongs to the conversation’s original host.'); return false; }
     if (destination.beforeId === source.agentId && (destination.beforeHostId ?? destination.hostId) === source.hostId) return true;
+    // Sorted automatically, a list cannot hold a dropped position. A drop back into the row's own list changes nothing
+    // (on a phone that is mostly a long press that moved), and no drop switches every device to Custom order.
+    const customOrder = options.sortBy === 'manual';
+    const from = source.from;
+    if (!customOrder && from && from.hostId === destination.hostId && from.groupId === destination.groupId && from.projectKey === destination.projectKey) { setSortHint(true); return false; }
     pending.current = true; setFolderError(null);
     try {
-      const nextAssignments = [...assignments.filter(item => item.hostId !== source.hostId || item.agentId !== source.agentId), { ...source, folderHostId: destination.hostId, groupId, ...(destination.beforeId ? { beforeId: destination.beforeId, beforeHostId: destination.beforeHostId ?? destination.hostId } : {}) }];
+      const nextAssignments = [...assignments.filter(item => item.hostId !== source.hostId || item.agentId !== source.agentId), { hostId: source.hostId, agentId: source.agentId, folderHostId: destination.hostId, groupId, ...(destination.beforeId && customOrder ? { beforeId: destination.beforeId, beforeHostId: destination.beforeHostId ?? destination.hostId } : {}) }];
       const newProjectGroup = destination.projectKey && !current.groups.some(group => group.id === groupId) ? { id: groupId!, projectKey: destination.projectKey, name: (destination.projectTitle || 'Project').slice(0, 60), agentIds: [] } : null;
       if (newProjectGroup && destination.hostId !== ownerHost && !tabScope) {
         if (extraSettings.status !== 'ready' || !await extraSettings.save({ hosts: { ...extraSettings.values.hosts, [destination.hostId]: { ...current, groups: withPlacedProject(destination.hostId, current.groups, newProjectGroup) } } }, extraSettings.revision)) { setFolderError('Could not prepare project folder. Try again.'); return false; }
@@ -227,7 +234,7 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
         ? await tabScope.saveOrganization(nextOwner, settings.revision, newProjectGroup && destination.hostId !== ownerHost ? { ...tabScope.tab.hosts, [destination.hostId]: { ...current, groups: withPlacedProject(destination.hostId, current.groups, newProjectGroup) } } : undefined)
         : await settings.save(nextOwner, settings.revision);
       if (!saved) { setFolderError('Could not move conversation. Refresh settings and try again.'); return false; }
-      if (destination.beforeId && options.sortBy !== 'manual' && !await option({ sortBy: 'manual' })) setFolderError('Conversation moved, but custom order could not be enabled. Choose Sort by → Custom order and retry.');
+      if (destination.beforeId && !customOrder) setSortHint(true);
       expand(destination.groupId ?? 'ungrouped');
       return true;
     } catch { setFolderError('Could not move conversation. Check the host connection.'); return false; }
@@ -253,7 +260,7 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
   }
   function parentRow(reference: AgentRef, groupId: string | null, folderHostId: string, project?: {key:string;title:string}, subtasks?: SubtaskChip) {
     return <ConversationDropTarget key={reference.key} destination={{ hostId: folderHostId, groupId, beforeId: reference.id, beforeHostId: reference.hostId, ...(project ? {projectKey:project.key,projectTitle:project.title} : {}) }} view={view}>
-      <DragConversationRow source={{ hostId: reference.hostId, agentId: reference.id }}><ConversationRow drag={{ hostId: reference.hostId, agentId: reference.id }} loadingColor={options.loadingColor} loadingEffect={options.loadingEffect} reference={reference} view={view} moving={options.grouping === 'manual' && selected !== null} select={id => setSelected(memberId(targetHost!, reference.hostId, id))} detailed={detailed} subtasks={subtasks} serverLabel={hosts.length > 1 && (groupId !== null || options.showServer) ? hosts.find(host => host.serverId === reference.hostId)?.label || 'Disconnected server' : undefined} /></DragConversationRow>
+      <DragConversationRow source={{ hostId: reference.hostId, agentId: reference.id, from: { hostId: folderHostId, groupId, ...(project ? { projectKey: project.key } : {}) } }}><ConversationRow drag={{ hostId: reference.hostId, agentId: reference.id }} loadingColor={options.loadingColor} loadingEffect={options.loadingEffect} reference={reference} view={view} moving={options.grouping === 'manual' && selected !== null} select={id => setSelected(memberId(targetHost!, reference.hostId, id))} detailed={detailed} subtasks={subtasks} serverLabel={hosts.length > 1 && (groupId !== null || options.showServer) ? hosts.find(host => host.serverId === reference.hostId)?.label || 'Disconnected server' : undefined} /></DragConversationRow>
     </ConversationDropTarget>;
   }
   async function createHostFolder(hostId: string, name: string) {
@@ -378,6 +385,7 @@ export function FolderSidebar(view: PluginSidebarViewProps & {tabScope?: Sidebar
     </EntryReveal>
     {tabScope && !tabScope.tab.members.length && <View style={{padding:8,gap:4}}><Text style={{color:c.foregroundMuted,fontSize:12}}>{t('Add existing conversations to this tab.')}</Text><Pressable theme={view.theme} accessibilityRole="button" accessibilityLabel={t('Choose conversations…')} onPress={tabScope.openMembers} style={{minHeight:view.layout.compact?44:32,justifyContent:'center'}}><Text style={{color:c.accent,fontSize:13}}>{t('Choose conversations…')}</Text></Pressable></View>}
     {folderError && <Text accessibilityRole="alert" style={{ marginHorizontal: 8, marginBottom: 6, color: c.statusDanger, fontSize: 11, lineHeight: 16 }}>{folderError}</Text>}
+    {sortHint && !folderError && <Text accessibilityRole="alert" style={{ marginHorizontal: 8, marginBottom: 6, color: c.foregroundMuted, fontSize: 11, lineHeight: 16 }}>{t('Lists are sorted automatically, so conversations keep their places. To arrange them by hand, choose View options → Sort by → Custom order.')}</Text>}
     {selected && <Text style={{ color: c.foregroundMuted, fontSize: 12, padding: 8 }}>{t('Choose a folder for the selected conversation')}</Text>}
     {!search.trim() && <PinnedSection view={view} options={conversationOptions} items={pinnedItems} dense={short} row={reference => <ConversationRow key={`pinned:${reference.key}`} loadingColor={options.loadingColor} loadingEffect={options.loadingEffect} reference={reference} view={view} moving={false} select={() => {}} detailed={detailed} serverLabel={multiHost ? hosts.find(host => host.serverId === reference.hostId)?.label : undefined} />} />}
     {!search.trim() && <ActiveSection view={view} options={conversationOptions} dense={short} row={reference => <ConversationRow key={`active:${reference.key}`} loadingColor={options.loadingColor} loadingEffect={options.loadingEffect} reference={reference} view={view} moving={false} select={() => {}} detailed={detailed} serverLabel={multiHost ? hosts.find(host => host.serverId === reference.hostId)?.label : undefined} />} />}

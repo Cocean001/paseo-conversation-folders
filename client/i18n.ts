@@ -9,6 +9,7 @@ export const messages = defineTranslations({ resources: {
 const zh: Record<string, string> = {
   'Untitled conversation': '未命名对话', 'Untitled workspace': '未命名工作区', 'Search conversations…': '搜索对话…',
   'Search full transcripts for “{0}”': '在全文中搜索“{0}”',
+  'Lists are sorted automatically, so conversations keep their places. To arrange them by hand, choose View options → Sort by → Custom order.': '列表正按规则自动排序，对话会留在原位。想手动排列，请在“视图与筛选 → 排序”里选“自定义顺序”。',
   'Loading…': '正在加载…', 'Loading folders…': '正在加载文件夹…', 'Saving…': '正在保存…',
   'New folder': '新建文件夹', 'New folder…': '新建文件夹…', 'New subfolder': '新建子文件夹', 'New subfolder…': '新建子文件夹…',
   'Cancel': '取消', 'Close': '关闭', 'Create': '创建', 'Save': '保存', 'Done': '完成', 'Remove': '移除',
