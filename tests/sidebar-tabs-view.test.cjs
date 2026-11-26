@@ -21,7 +21,7 @@ function harness(active=false) {
   '@getpaseo/plugin/client/ui':{TextInput:'TextInput'},
   '@getpaseo/plugin/client':{useSettings:()=>settings,useRpc:()=>async()=>({hostId:'local'}),useAgents:()=>[],useHosts:()=>[],useAgent:()=>null},
   '../shared/settings':{sidebarTabs:{}},'../shared/host-context':{hostContext:{}},'../shared/model':organizationModel,'../shared/sidebar-tabs':tabsModel,
-  './dropdown-menu':{DropdownMenu:'DropdownMenu'},'./visuals':{FeedbackPressable:'Pressable',Glyph:'Glyph'},
+  './dropdown-menu':{DropdownMenu:'DropdownMenu'},'./visuals':{FeedbackPressable:'Pressable',Glyph:'Glyph'},'./i18n':{t:(s,...a)=>s.replace(/\{(\d)\}/g,(_,i)=>String(a[i])),timeLabel:s=>s,useAppLanguage(){}},'./view-state':{useViewState:()=>null},
  });
  function render(){cursor=0;tree=mod.SidebarTabsView({view:{theme:{colors:{}},layout:{compact:false}},children(next,items){scope=next;controls=items;return jsx('Content',{})}})}
  function nodes(node,out=[]){if(Array.isArray(node))node.forEach(child=>nodes(child,out));else if(node&&typeof node==='object'){out.push(node);nodes(node.props?.children,out)}return out}
@@ -32,16 +32,16 @@ function harness(active=false) {
 }
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 test('new tab uses revision-aware save, activates independently, and closes without deleting content',async()=>{
- const h=harness();await tick();h.render();h.press('New tab');h.find('Tab name').props.onChangeText('Research');h.render();h.press('Save tab');await tick();h.render();assert.equal(h.calls.length,1);assert.equal(h.calls[0].revision,'1');assert.equal(h.scope().tab.name,'Research');
+ const h=harness();await tick();h.render();h.controls().items.find(item=>item.id==='new').onSelect();h.render();h.find('Tab name').props.onChangeText('Research');h.render();h.press('Save tab');await tick();h.render();assert.equal(h.calls.length,1);assert.equal(h.calls[0].revision,'1');assert.equal(h.scope().tab.name,'Research');
  h.press('Close tab Research');await tick();h.render();assert.equal(h.scope(),undefined);assert.equal(h.settings.values.tabs[0].open,false);
  h.controls().items.find(item=>item.id.startsWith('reopen-')).onSelect();await tick();h.render();assert.equal(h.scope().tab.name,'Research');
 });
 test('save failure preserves tab draft and prevents duplicate submissions',async()=>{
  const h=harness();await tick();h.render();let finish;h.settings.save=async(values,revision)=>{h.calls.push({values,revision});return new Promise(resolve=>finish=resolve)};
- h.press('New tab');h.find('Tab name').props.onChangeText('Retry me');h.render();const submit=h.find('Save tab');submit.props.onPress();submit.props.onPress();h.render();assert.equal(h.calls.length,1);assert.equal(h.find('Save tab').props.disabled,true);finish(false);await tick();h.render();assert.equal(h.find('Tab name').props.value,'Retry me');assert.equal(h.settings.values.tabs.length,0);assert.equal(h.find('Save tab').props.disabled,false);
+ h.controls().items.find(item=>item.id==='new').onSelect();h.render();h.find('Tab name').props.onChangeText('Retry me');h.render();const submit=h.find('Save tab');submit.props.onPress();submit.props.onPress();h.render();assert.equal(h.calls.length,1);assert.equal(h.find('Save tab').props.disabled,true);finish(false);await tick();h.render();assert.equal(h.find('Tab name').props.value,'Retry me');assert.equal(h.settings.values.tabs.length,0);assert.equal(h.find('Save tab').props.disabled,false);
 });
 test('stale dialog revisions cannot write to a newly selected or changed tab',async()=>{
- const h=harness();await tick();h.render();h.press('New tab');h.find('Tab name').props.onChangeText('Stale');h.settings.revision='2';h.render();h.press('Save tab');await tick();h.render();assert.equal(h.calls.length,0);assert.equal(h.find('Tab name').props.value,'Stale');
+ const h=harness();await tick();h.render();h.controls().items.find(item=>item.id==='new').onSelect();h.render();h.find('Tab name').props.onChangeText('Stale');h.settings.revision='2';h.render();h.press('Save tab');await tick();h.render();assert.equal(h.calls.length,0);assert.equal(h.find('Tab name').props.value,'Stale');
 });
 test('tab scope commits cross-host project metadata and qualified assignment together',async()=>{
  const h=harness(true);await tick();h.render();const organization={mode:'folders',groups:[],ungroupedOrder:[],assignments:[{hostId:'third',agentId:'chat',folderHostId:'remote',groupId:'project-g'}]};
@@ -66,7 +66,7 @@ test('tab surface highlights label and close together and clears hover without l
  const mod=load('../client/sidebar-tabs.tsx',{
   react:{useState(value){const i=cursor++;if(!(i in states))states[i]=value;return[states[i],next=>states[i]=next]},useEffect(){},useRef:()=>({})},
   'react/jsx-runtime':{jsx,jsxs:jsx},'react-native':{View:'View',Animated:{View:'AnimatedView'},Platform:{OS:'web'}},
-  '@getpaseo/plugin/client':{},'@getpaseo/plugin/client/ui':{},'../shared/settings':{},'../shared/host-context':{},'../shared/model':{},'../shared/sidebar-tabs':{},'./dropdown-menu':{},'./visuals':{useMotion:target=>target},
+  '@getpaseo/plugin/client':{},'@getpaseo/plugin/client/ui':{},'../shared/settings':{},'../shared/host-context':{},'../shared/model':{},'../shared/sidebar-tabs':{},'./dropdown-menu':{},'./visuals':{useMotion:target=>target},'./i18n':{t:(s,...a)=>s.replace(/\{(\d)\}/g,(_,i)=>String(a[i])),timeLabel:s=>s,useAppLanguage(){}},'./view-state':{useViewState:()=>null},
  });
  const view={theme:{colors:{surface1:'hover',surface2:'selected'}}};
  const render=(selected=false,disabled=false)=>{cursor=0;return mod.SidebarTabSurface({selected,disabled,view,limited:true,children:['label','close']})};

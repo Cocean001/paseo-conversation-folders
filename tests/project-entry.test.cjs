@@ -5,8 +5,8 @@ const ts = require('typescript');
 function harness(status = 'online') {
   let cursor = 0, states = [], tree, calls = [], resolveOpen, rejectOpen;
   const jsx = (type, props) => ({ type, props: props || {} });
-  const imports = { './folder-add':{FolderAdd:'FolderAdd'}, './web': {isSidebarDragging:()=>false}, './folder-drag': {FolderDragProvider:'FolderDragProvider',DragFolderRow:'DragFolderRow',FolderDropTarget:'FolderDropTarget'},
-    '../shared/status': {aggregateStates:()=>({state:'idle',hasUpdates:false})}, '../shared/model': {}, './drag-and-drop': {}, './conversation-view': {useConversationView:()=>({options:{}})}, '../shared/conversations': {}, './context-menu': {}, './image-picker': {}, './visuals': { FeedbackPressable: 'Pressable', Glyph: 'Glyph', StatusMark: 'StatusMark', EntryReveal: 'EntryReveal' }, '../shared/settings': {},
+  const imports = { './i18n':{t:(s,...a)=>s.replace(/\{(\d)\}/g,(_,i)=>String(a[i])),timeLabel:s=>s,useAppLanguage(){}},'./view-state':(()=>{const open=new Map();let collapsed=false,before=new Map();const api={isOpen:(k,f)=>open.has(k)?open.get(k):f,setOpen:(k,v)=>open.set(k,v),register:()=>()=>{},showAll:()=>false,setShowAll(){},activeTab:null,setActiveTab(){},titleLines:null,setTitleLines(n){api.titleLines=n},get collapsed(){return collapsed},toggleCollapseAll(extra=[]){if(collapsed){open.clear();before.forEach((v,k)=>open.set(k,v))}else{before=new Map(open);extra.forEach(k=>open.set(k,false))}collapsed=!collapsed}};return{ViewStateProvider:'ViewStateProvider',useViewState:()=>api,useBranchOpen:(k,f=true)=>[api.isOpen(k,f),v=>api.setOpen(k,v)]}})(),'../shared/identity':{projectTile:()=>({color:'#368080',letter:'P'})}, './folder-add':{FolderAdd:'FolderAdd'}, './web': {isSidebarDragging:()=>false, touchMenu:v=>v.layout.platform!=='web'||v.layout.compact}, './folder-drag': {FolderDragProvider:'FolderDragProvider',DragFolderRow:'DragFolderRow',FolderDropTarget:'FolderDropTarget'},
+    '../shared/status': {quietSubtask:()=>false,aggregateStates:()=>({state:'idle',hasUpdates:false})}, '../shared/model': {}, './drag-and-drop': {}, './touch-drag':{useTouchDrag:()=>null}, './steady':{useSteadyList:l=>l}, '../shared/activity':{timeBucket:()=>'older'}, './conversation-view': {useConversationView:()=>({options:{}})}, '../shared/conversations': {}, './context-menu': {}, './image-picker': {}, './visuals': { FeedbackPressable: 'Pressable', Glyph: 'Glyph', StatusMark: 'StatusMark', EntryReveal: 'EntryReveal' }, '../shared/settings': {},
     react: { useEffect() {}, useState(initial) { const i = cursor++; if (!(i in states)) states[i] = initial; return [states[i], next => { states[i] = typeof next === 'function' ? next(states[i]) : next; }]; }, useRef(value) { const i = cursor++; if (!(i in states)) states[i] = { current: value }; return states[i]; } },
     'react/jsx-runtime': { jsx, jsxs: jsx }, 'react-native': { View: 'View', Pressable: 'Pressable', Text: 'Text' }, '@getpaseo/plugin/client/ui': { TextInput: 'TextInput' },
     '@getpaseo/plugin/client': {useAgents:()=>[]},
@@ -18,9 +18,9 @@ function harness(status = 'online') {
   function walk(node, out=[]) { if(Array.isArray(node))node.forEach(n=>walk(n,out));else if(node&&typeof node==='object'){out.push(node);walk(node.props.children,out);}return out; }
   const nodes = () => [...walk(tree.props.action), ...walk(tree.props.editor), ...walk(tree.props.children)];
   const find = label => nodes().find(n=>n.props.accessibilityLabel===label);
-  const press = label => { if(label==='New folder on MacBook'){const menu=nodes().find(n=>n.props.actions);const action=menu.props.actions.find(a=>a.id==='new-folder');if(!action.disabled)action.onSelect();render();return;} const node=find(label); assert.ok(node,label); if(!node.props.disabled)node.props.onPress(); render(); };
+  const press = label => { if(label==='New folder on MacBook'){const action=tree.props.menuActions.find(a=>a.id==='new-folder');if(!action.disabled)action.onSelect();render();return;} const node=find(label); assert.ok(node,label); if(!node.props.disabled)node.props.onPress(); render(); };
   render();
-  return {find,press,render,nodes,calls,reject:message=>rejectOpen(new Error(message)),resolve:value=>resolveOpen(value)};
+  return {menu:()=>tree.props.menuActions,find,press,render,nodes,calls,reject:message=>rejectOpen(new Error(message)),resolve:value=>resolveOpen(value)};
 }
 test('host plus opens compact single-level entry and Escape dismisses it', () => {
   const h=harness();h.press('New folder on MacBook');
@@ -37,7 +37,7 @@ test('arbitrary names save as host folders, duplicate requests are prevented and
   assert.ok(h.nodes().some(n=>n.props.accessibilityRole==='alert'&&n.props.children==='Could not save. Check the server connection and try again.'));
   h.find('Folder name on MacBook').props.onChangeText('/another');h.render();assert.ok(!h.nodes().some(n=>n.props.accessibilityRole==='alert'));
 });
-test('offline hosts cannot open project entry',()=>{const h=harness('offline');assert.equal(h.nodes().find(n=>n.props.actions).props.actions[0].disabled,true);h.press('New folder on MacBook');assert.equal(h.find('Folder name on MacBook').props.editable,false);});
+test('offline hosts cannot open project entry',()=>{const h=harness('offline');assert.equal(h.menu()[0].disabled,true);h.press('New folder on MacBook');assert.equal(h.find('Folder name on MacBook').props.editable,false);});
 
 test('successful arbitrary folder creation closes entry without opening a directory', async()=>{
  const h=harness();h.press('New folder on MacBook');h.find('Folder name on MacBook').props.onChangeText('我的项目 123123');h.render();h.press('Create folder');h.resolve(true);await new Promise(r=>setImmediate(r));h.render();assert.equal(h.find('Folder name on MacBook').props.editable,false);assert.deepEqual(h.calls,[{host:'remote',name:'我的项目 123123'}]);

@@ -2,37 +2,40 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const ts = require('typescript');
 const fs = require('node:fs');
-function harness(snapshots = []) {
+let extraWorkspaces = [];
+function harness(snapshots = [], layout = { compact: false, platform: 'web' }) {
   let cursor = 0, states = [], tree, effects = [], query;
   const owner = { status: 'ready', values: { mode: 'folders', groups: [{ id: 'local-folder', name: '原有分组', agentIds: [] }], ungroupedOrder: [] }, revision: '1', async save(next) { this.values = next; return true; } };
   const extra = { status: 'ready', values: { hosts: {} }, revision: '1', async save(next) { this.values = next; return true; } };
+  const pins = { status: 'ready', values: { items: [] }, revision: 'p1', async save(next) { this.values = next; return true; } };
   const prefs = { status: 'ready', values: { grouping: 'manual', showServer: false, showTabs: true, tabStyle: 'full', showCounts: true, multilineTitles: false }, revision: '1', async save(next) { this.values = next; return true; } };
   const readHost = async () => ({ hostId: 'local' });
   const jsx = (type, props) => ({ type, props: props || {} });
   const react = { useState(initial) { const i = cursor++; if (!(i in states)) states[i] = initial; return [states[i], next => { states[i] = typeof next === 'function' ? next(states[i]) : next; }]; }, useRef(value) { const i = cursor++; if (!(i in states)) states[i] = { current: value }; return states[i]; }, useEffect(fn) { const i = cursor++; if (!(i in states)) { states[i] = true; effects.push(fn); } } };
   const sharedModule = { exports: {} }; new Function('exports', ts.transpileModule(fs.readFileSync(require.resolve('../shared/conversations.ts'), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(sharedModule.exports);
-  const imports = { '../shared/folder-picker': (()=>{const m={exports:{}};const code=ts.transpileModule(fs.readFileSync(require.resolve('../shared/folder-picker.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText;new Function('exports','require',code)(m.exports,()=>{const model={exports:{}};new Function('exports',ts.transpileModule(fs.readFileSync(require.resolve('../shared/model.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText)(model.exports);return model.exports;});return m.exports;})(), './folder-add':{FolderAdd:'FolderAdd'}, './folder-drag': {FolderDragProvider:'FolderDragProvider',DragFolderRow:'DragFolderRow',FolderDropTarget:'FolderDropTarget'}, './conversation-view':{ConversationViewContext:{Provider:'Provider'}}, './sidebar-tabs':{SidebarTabsView:'SidebarTabsView'}, './conversation-actions': {ConversationActions:'ConversationActions'}, '../shared/status': {conversationState:()=> 'idle',aggregateStates:()=>({state:'idle',hasUpdates:false})}, '../shared/activity': { activityTime: () => 'now' }, '../shared/conversations': sharedModule.exports, './drag-and-drop': { ConversationDragProvider: 'ConversationDragProvider', ConversationDropTarget: 'ConversationDropTarget', DragConversationRow: 'DragConversationRow' }, './dropdown-menu': { DropdownMenu: 'DropdownMenu' }, './visuals': { loadingEffects: ['spinner','orbit','pulse','dots','bars'].map(id=>({id,label:id})), LoadingMark:'LoadingMark', FeedbackPressable: 'Pressable', Glyph: 'Glyph', StatusMark: 'StatusMark', EntryReveal: 'EntryReveal', Reveal: 'Reveal', Disclosure: 'Disclosure', Transition: 'Transition' }, './automatic-tree': { AutomaticTree: 'AutomaticTree', ProjectFolder:'ProjectFolder' }, react, 'react/jsx-runtime': { jsx, jsxs: jsx }, 'react-native': { View: 'View', Text: 'Text', TextInput: 'TextInput', ScrollView: 'ScrollView', Pressable: 'Pressable' }, '@getpaseo/plugin/client/ui': { Icon: 'Icon', Modal: Object.assign(() => {}, { Content: 'ModalContent' }), SettingsSection: 'SettingsSection', SettingsSelect: 'SettingsSelect', SettingsSwitch: 'SettingsSwitch', SettingsAction: 'SettingsAction' }, '@getpaseo/plugin/client': { useSettings: d => d === 'preferences' ? prefs : d === 'owner' ? owner : extra, useRpc: () => readHost, useHosts: () => [{ serverId: 'local', label: '本机', status: 'online' }, { serverId: 'remote', label: '远端', status: 'online' }], useAgents: q => { if (q?.hosts) query = q; const rows=snapshots.filter(agent=>(!q?.hosts||q.hosts.includes(agent.hostId))&&(!q?.where||q.where(agent))); if(q?.groupBy){const buckets=new Map();for(const agent of rows){const key=q.groupBy(agent);if(!buckets.has(key))buckets.set(key,{key,items:[]});buckets.get(key).items.push(agent)}return [...buckets.values()]}return rows.map(agent=>({kind:'agent',hostId:agent.hostId,id:agent.id,key:agent.hostId+':'+agent.id})); }, useWorkspaces: q => { const rows = [{ ref: {key:'w-local',hostId:'local'}, project:{key:'p-local'},projectDisplayName:'Local project',labels:['work'],background:false },{ref:{key:'w-remote',hostId:'remote'},project:{key:'p-remote'},projectDisplayName:'Remote project',labels:['personal'],background:true}].filter(row => !q?.where || q.where(row)); if(!q?.groupBy)return rows.map(row=>row.ref); const groups=new Map(); for(const row of rows){const keys=q.groupBy(row); for(const key of Array.isArray(keys)?keys:[keys]){const id=typeof key==='string'?key:key.key; if(!groups.has(id))groups.set(id,{key:id,title:typeof key==='string'?key:key.title,items:[]});groups.get(id).items.push(row.ref)}} return [...groups.values()]; }, useAgent: () => null }, '../shared/settings': { organization: 'owner', hostOrganizations: 'extra', displayPreferences: 'preferences' }, '../shared/host-context': { hostContext: {} }, '../shared/model': (() => { const mod = { exports: {} }; const source = ts.transpileModule(fs.readFileSync(require.resolve('../shared/model.ts'), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS } }).outputText; new Function('exports', source)(mod.exports); return mod.exports; })() };
+  const imports = { './i18n':{t:(s,...a)=>s.replace(/\{(\d)\}/g,(_,i)=>String(a[i])),timeLabel:s=>s,useAppLanguage(){}},'./view-state':(()=>{const open=new Map();let collapsed=false,before=new Map();const api={isOpen:(k,f)=>open.has(k)?open.get(k):f,setOpen:(k,v)=>open.set(k,v),register:()=>()=>{},showAll:()=>false,setShowAll(){},activeTab:null,setActiveTab(){},titleLines:null,setTitleLines(n){api.titleLines=n},get collapsed(){return collapsed},toggleCollapseAll(extra=[]){if(collapsed){open.clear();before.forEach((v,k)=>open.set(k,v))}else{before=new Map(open);extra.forEach(k=>open.set(k,false))}collapsed=!collapsed}};return{ViewStateProvider:'ViewStateProvider',useViewState:()=>api,useBranchOpen:(k,f=true)=>[api.isOpen(k,f),v=>api.setOpen(k,v)]}})(),'../shared/identity':{projectTile:()=>({color:'#368080',letter:'P'})}, '../shared/folder-picker': (()=>{const m={exports:{}};const code=ts.transpileModule(fs.readFileSync(require.resolve('../shared/folder-picker.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText;new Function('exports','require',code)(m.exports,()=>{const model={exports:{}};new Function('exports',ts.transpileModule(fs.readFileSync(require.resolve('../shared/model.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText)(model.exports);return model.exports;});return m.exports;})(), './folder-add':{FolderAdd:'FolderAdd'}, './folder-drag': {FolderDragProvider:'FolderDragProvider',DragFolderRow:'DragFolderRow',FolderDropTarget:'FolderDropTarget'}, './conversation-view':{ConversationViewContext:{Provider:'Provider'}}, './sidebar-tabs':{SidebarTabsView:'SidebarTabsView'}, './conversation-actions': {ConversationActions:'ConversationActions'}, './touch-drag': {TouchDragProvider:'TouchDragProvider', TouchScrollView:'ScrollView', useTouchDrag:()=>null}, './steady': {SteadyProvider:'SteadyProvider', useSteadyList:l=>l}, './pins': {PinsContext:{Provider:'PinsProvider'}, pinKey:(h,a)=>h+':'+a}, './web': {touchMenu:v=>v.layout.platform!=='web'||v.layout.compact}, '../shared/status': {quietSubtask:()=>false,conversationState:()=> 'idle',aggregateStates:()=>({state:'idle',hasUpdates:false})}, '../shared/activity': { activityTime: () => 'now' }, '../shared/conversations': sharedModule.exports, './drag-and-drop': { ConversationDragProvider: 'ConversationDragProvider', ConversationDropTarget: 'ConversationDropTarget', DragConversationRow: 'DragConversationRow' }, './dropdown-menu': { DropdownMenu: 'DropdownMenu' }, './visuals': { loadingEffects: ['spinner','orbit','pulse','dots','bars'].map(id=>({id,label:id})), LoadingMark:'LoadingMark', FeedbackPressable: 'Pressable', Glyph: 'Glyph', StatusMark: 'StatusMark', EntryReveal: 'EntryReveal', Reveal: 'Reveal', Disclosure: 'Disclosure', Transition: 'Transition' }, './automatic-tree': { AutomaticTree: 'AutomaticTree', ProjectFolder:'ProjectFolder' }, react, 'react/jsx-runtime': { jsx, jsxs: jsx }, 'react-native': { View: 'View', Text: 'Text', TextInput: 'TextInput', ScrollView: 'ScrollView', Pressable: 'Pressable' }, '@getpaseo/plugin/client/ui': { Icon: 'Icon', Modal: Object.assign(() => {}, { Content: 'ModalContent' }), SettingsSection: 'SettingsSection', SettingsSelect: 'SettingsSelect', SettingsSwitch: 'SettingsSwitch', SettingsAction: 'SettingsAction' }, '@getpaseo/plugin/client': { useSettings: d => d === 'preferences' ? prefs : d === 'owner' ? owner : d === 'pins' ? pins : extra, useRpc: () => readHost, useHosts: () => [{ serverId: 'local', label: '本机', status: 'online' }, { serverId: 'remote', label: '远端', status: 'online' }], useAgents: q => { if (q?.hosts) query = q; const rows=snapshots.filter(agent=>(!q?.hosts||q.hosts.includes(agent.hostId))&&(!q?.where||q.where(agent))); if(q?.groupBy){const buckets=new Map();for(const agent of rows){const key=q.groupBy(agent);if(!buckets.has(key))buckets.set(key,{key,items:[]});buckets.get(key).items.push(agent)}return [...buckets.values()]}return rows.map(agent=>({kind:'agent',hostId:agent.hostId,id:agent.id,key:agent.hostId+':'+agent.id})); }, useWorkspaces: q => { const rows = [{ ref: {key:'w-local',hostId:'local'}, project:{key:'p-local'},projectDisplayName:'Local project',labels:['work'],background:false },{ref:{key:'w-remote',hostId:'remote'},project:{key:'p-remote'},projectDisplayName:'Remote project',labels:['personal'],background:true},...extraWorkspaces].filter(row => !q?.where || q.where(row)); if(!q?.groupBy)return rows.map(row=>row.ref); const groups=new Map(); for(const row of rows){const keys=q.groupBy(row); for(const key of Array.isArray(keys)?keys:[keys]){const id=typeof key==='string'?key:key.key; if(!groups.has(id))groups.set(id,{key:id,title:typeof key==='string'?key:key.title,items:[]});groups.get(id).items.push(row.ref)}} return [...groups.values()]; }, useAgent: () => null }, '../shared/settings': { organization: 'owner', hostOrganizations: 'extra', displayPreferences: 'preferences', pinnedConversations: 'pins' }, '../shared/host-context': { hostContext: {} }, '../shared/model': (() => { const mod = { exports: {} }; const source = ts.transpileModule(fs.readFileSync(require.resolve('../shared/model.ts'), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS } }).outputText; new Function('exports', source)(mod.exports); return mod.exports; })() };
   const code = ts.transpileModule(fs.readFileSync(require.resolve('../client/sidebar.tsx'), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   const mod = { exports: {} }; new Function('require', 'exports', 'setInterval', code)(name => { assert.ok(name in imports, name); return imports[name]; }, mod.exports, () => 0);
-  function render() { cursor = 0; tree = mod.exports.FolderSidebar({ theme: { colors: {} }, layout: { compact: false }, active: { agent: null, workspace: null }, navigation: {} }); }
+  function render() { cursor = 0; tree = mod.exports.FolderSidebar({ theme: { colors: {} }, layout, active: { agent: null, workspace: null }, navigation: {} }); }
   function walk(node, out = []) { if (Array.isArray(node)) node.forEach(n => walk(n, out)); else if (node && typeof node === 'object') { out.push(node); walk(node.props.children, out); if (node.type === 'DropdownMenu') walk(node.props.header, out); } return out; }
   function find(label) { return walk(tree).find(n => n.props.accessibilityLabel === label); }
   function press(label) { assert.ok(find(label), label); find(label).props.onPress(); render(); }
   render(); for (const fn of effects) fn();
-  return { render, find, press, owner, extra, prefs, nodes: () => walk(tree), query: () => query };
+  return { render, find, press, owner, extra, prefs, pins, nodes: () => walk(tree), query: () => query };
 }
 test('multiple configured hosts no longer block sidebar; original groups preserved', async () => { const h = harness(); await new Promise(r => setImmediate(r)); h.render(); assert.ok(h.find('Folder 原有分组')); assert.deepEqual(h.query().hosts, ['local']); assert.ok(h.find('Select host 远端')); });
 test('switch hosts isolates queries and folder writes; returning restores local groups', async () => { const h = harness(); await new Promise(r => setImmediate(r)); h.render(); h.press('Select host 远端'); assert.deepEqual(h.query().hosts, ['remote']); assert.equal(h.find('Folder 原有分组'), undefined); h.press('New folder'); h.find('Folder name').props.onChangeText('远端分组'); h.render(); h.press('Create'); await new Promise(r => setImmediate(r)); h.render(); assert.equal(h.extra.values.hosts.remote.groups[0].name, '远端分组'); assert.equal(h.owner.values.groups[0].name, '原有分组'); h.press('Select host 本机'); assert.ok(h.find('Folder 原有分组')); assert.equal(h.find('Folder 远端分组'), undefined); });
 test('folder menu supports rename and safe deletion while preserving host separation', async () => {
  const h = harness(); await new Promise(r => setImmediate(r)); h.render(); h.press('⋮'); h.press('Rename'); h.find('Folder name').props.onChangeText('改名后'); h.render(); h.press('Save'); await new Promise(r => setImmediate(r)); h.render(); assert.ok(h.find('Folder 改名后')); h.press('⋮'); h.press('Delete folder'); await new Promise(r => setImmediate(r)); h.render(); assert.equal(h.owner.values.groups.length, 0); assert.deepEqual(h.extra.values.hosts, {});
 });
-test('dropdown settings persist multiline preference without opening a settings modal', async () => {
+test('desktop titles default to two lines and the choice is kept per device', async () => {
  const h = harness(); await new Promise(r => setImmediate(r)); h.render();
  const dropdown = h.nodes().find(n => n.type === 'DropdownMenu');
  const titles = dropdown.props.items.find(item => item.id === 'titles');
- assert.equal(titles.value, 'Single line'); titles.items.find(item => item.id === 'multiline').onSelect();
+ assert.equal(titles.value, 'Two lines'); titles.items.find(item => item.id === 'single').onSelect();
  await new Promise(r => setImmediate(r)); h.render();
- assert.equal(h.nodes().find(n => n.type === 'DropdownMenu').props.items.find(item => item.id === 'titles').value, 'Multiline');
+ assert.equal(h.nodes().find(n => n.type === 'DropdownMenu').props.items.find(item => item.id === 'titles').value, 'Single line');
+ assert.equal(h.prefs.values.multilineTitles, false);
  assert.ok(!h.nodes().some(n => n.type === 'Modal'));
 });
 test('subfolders can only be created below a root folder', async () => {
@@ -75,7 +78,7 @@ test('sorting/filter menus persist and grouping choices include icons',async()=>
  assert.ok(items().find(i=>i.id==='grouping').items.every(i=>i.icon));
  items().find(i=>i.id==='sort').items.find(i=>i.id==='created').onSelect();await new Promise(r=>setImmediate(r));h.render();assert.equal(h.prefs.values.sortBy,'created');
  items().find(i=>i.id==='filter').items.find(i=>i.id==='running').onSelect();await new Promise(r=>setImmediate(r));h.render();assert.equal(h.prefs.values.filter,'running');
- h.find('Filter conversations').props.onChangeText('release');h.render();assert.equal(h.query().where({title:'release checklist',status:'running'}),true);assert.equal(h.query().where({title:'other',status:'running'}),false);
+ h.find('Search conversations…').props.onChangeText('release');h.render();assert.equal(h.query().where({title:'release checklist',status:'running'}),true);assert.equal(h.query().where({title:'other',status:'running'}),false);
 });
 test('cross-host moves save qualified membership and preserve original host data',async()=>{
  const h=harness();await new Promise(r=>setImmediate(r));h.render();const move=()=>h.nodes().find(n=>n.type==='ConversationDragProvider').props.move;
@@ -83,27 +86,32 @@ test('cross-host moves save qualified membership and preserve original host data
  assert.deepEqual(h.owner.values.assignments,[{hostId:'remote',agentId:'chat',folderHostId:'local',groupId:'local-folder'}]);
  const tree=()=>{h.prefs.values.grouping='server-project';h.render();return h.nodes().find(n=>n.type==='AutomaticTree')};
  assert.deepEqual(tree().props.foldersForHost('local')[0].agentIds,['host-agent:["remote","chat"]']);
- assert.equal(await move()({hostId:'local',agentId:'chat'},{hostId:'local',groupId:'local-folder',beforeId:'chat',beforeHostId:'remote'}),true);h.render();assert.deepEqual(tree().props.foldersForHost('local')[0].agentIds,['chat','host-agent:["remote","chat"]']);assert.equal(h.prefs.values.sortBy,'manual');
+ h.prefs.values.sortBy='manual';assert.equal(await move()({hostId:'local',agentId:'chat'},{hostId:'local',groupId:'local-folder',beforeId:'chat',beforeHostId:'remote'}),true);h.render();assert.deepEqual(tree().props.foldersForHost('local')[0].agentIds,['chat','host-agent:["remote","chat"]']);assert.equal(h.prefs.values.sortBy,'manual');
  h.owner.save=async()=>false;assert.equal(await move()({hostId:'remote',agentId:'chat'},{hostId:'local',groupId:null}),false);h.render();assert.equal(h.owner.values.assignments.length,2);assert.ok(h.nodes().some(n=>n.props.accessibilityRole==='alert'));
 });
 
-test('failed custom-order preference reports partial success without losing saved move',async()=>{
- const h=harness();await new Promise(r=>setImmediate(r));h.render();h.prefs.save=async()=>false;
+test('automatic sorting: a drop never switches every device to custom order, and a drop into its own list writes nothing',async()=>{
+ const h=harness();await new Promise(r=>setImmediate(r));h.render();const sortBy=h.prefs.values.sortBy;assert.notEqual(sortBy,'manual');
  const move=h.nodes().find(n=>n.type==='ConversationDragProvider').props.move;
- assert.equal(await move({hostId:'local',agentId:'a'},{hostId:'local',groupId:'local-folder',beforeId:'b'}),true);h.render();assert.equal(h.owner.values.assignments[0].agentId,'a');assert.ok(h.nodes().some(n=>n.props.accessibilityRole==='alert'&&String(n.props.children).includes('custom order could not be enabled')));
+ const hint=()=>h.nodes().some(n=>n.props.accessibilityRole==='alert'&&String(n.props.children).includes('sorted automatically'));
+ assert.equal(await move({hostId:'local',agentId:'a'},{hostId:'local',groupId:'local-folder',beforeId:'b'}),true);h.render();
+ assert.deepEqual(h.owner.values.assignments.map(a=>[a.agentId,a.groupId,a.beforeId]),[['a','local-folder',undefined]]);assert.equal(h.prefs.values.sortBy,sortBy);assert.ok(hint());
+ const before=JSON.stringify(h.owner.values);
+ assert.equal(await move({hostId:'local',agentId:'a',from:{hostId:'local',groupId:'local-folder'}},{hostId:'local',groupId:'local-folder',beforeId:'c'}),false);h.render();
+ assert.equal(JSON.stringify(h.owner.values),before);assert.equal(h.prefs.values.sortBy,sortBy);
 });
 
 
-test('top Filter contains original menu features and search is confined to dropdown header',async()=>{
- const h=harness();await new Promise(r=>setImmediate(r));h.render();assert.ok(h.find('Filter'));
- const menu=h.nodes().find(n=>n.type==='DropdownMenu');assert.deepEqual(menu.props.items.slice(0,8).map(i=>i.id),['grouping','sort','titles','display','hosts','projects','labels','background']);
- assert.ok(menu.props.header);assert.equal(h.nodes().filter(n=>n.props.accessibilityLabel==='Filter conversations').length,1);
+test('view options keep the original menu features and search stays visible above the list',async()=>{
+ const h=harness();await new Promise(r=>setImmediate(r));h.render();assert.ok(h.find('View options'));
+ const menu=h.nodes().find(n=>n.type==='DropdownMenu');assert.deepEqual(menu.props.items.slice(0,9).map(i=>i.id),['grouping','sort','filter','titles','display','hosts','projects','labels','background']);
+ assert.equal(menu.props.header,undefined);assert.equal(h.nodes().filter(n=>n.props.accessibilityLabel==='Search conversations…').length,1);
 });
 test('project, label and background workspace filters intersect and clear restores all',async()=>{
  const h=harness();await new Promise(r=>setImmediate(r));h.render();const items=()=>h.nodes().find(n=>n.type==='DropdownMenu').props.items;
  items().find(i=>i.id==='projects').items.find(i=>i.id==='p-remote').onSelect();h.render();assert.deepEqual(h.query().where({workspace:{key:'w-remote'},title:'test'}),true);assert.equal(h.query().where({workspace:{key:'w-local'},title:'test'}),false);
  items().find(i=>i.id==='labels').items.find(i=>i.id==='work').onSelect();h.render();assert.equal(h.query().where({workspace:{key:'w-remote'},title:'test'}),false);
- h.press('Clear filters');await new Promise(r=>setImmediate(r));h.render();assert.equal(h.query().where({workspace:{key:'w-remote'},title:'test'}),true);
+ items().find(i=>i.id==='clear').onSelect();await new Promise(r=>setImmediate(r));h.render();assert.equal(h.query().where({workspace:{key:'w-remote'},title:'test'}),true);
  items().find(i=>i.id==='background').onSelect();await new Promise(r=>setImmediate(r));h.render();assert.equal(h.prefs.values.showBackground,false);assert.equal(h.query().where({workspace:{key:'w-remote'},title:'test'}),false);assert.equal(h.query().where({workspace:{key:'w-local'},title:'test'}),true);
 });
 
@@ -190,4 +198,44 @@ test('folder plus saves a batch from multiple servers atomically and rejects sta
  assert.deepEqual(h.owner.values.assignments.map(a=>[a.hostId,a.agentId,a.groupId]),[['local','same','local-folder'],['remote','same','local-folder']]);
  h.owner.revision='2';h.render();const before=JSON.stringify(h.owner.values);assert.equal(await tree().props.addConversations([{hostId:'local',id:'other'}],{hostId:'local',groupId:'local-folder'},'1'),false);assert.equal(JSON.stringify(h.owner.values),before);
  h.owner.save=async()=>false;assert.equal(await tree().props.addConversations([{hostId:'local',id:'other'}],{hostId:'local',groupId:'local-folder'},'2'),false);assert.equal(JSON.stringify(h.owner.values),before);
+});
+
+test('dragging one project in the project view saves every project at its on-screen position', async () => {
+ extraWorkspaces = [{ ref: { key: 'w-second', hostId: 'local' }, project: { key: 'p-second' }, projectDisplayName: 'Second project', labels: [], background: false }];
+ try {
+  const h = harness(); await new Promise(r => setImmediate(r)); h.prefs.values.grouping = 'project'; h.render();
+  const move = h.nodes().find(n => n.type === 'FolderDragProvider').props.move;
+  const project = key => ({ id: 'project:' + key, projectKey: key, name: key, agentIds: [] });
+  assert.equal(await move({ hostId: 'local', groupId: 'project:p-second', project: project('p-second') }, { hostId: 'local', parentId: null, topLevel: false, siblingId: 'project:p-local', position: 'before', project: project('p-local') }), true);
+  assert.deepEqual(h.owner.values.groups.map(g => g.projectKey ?? g.id), ['p-second', 'p-local', 'local-folder']);
+  assert.ok(h.owner.values.groups.every(g => !g.parentId));
+ } finally { extraWorkspaces = []; }
+});
+
+test('dropping a conversation into a project keeps that project at its on-screen position', async () => {
+ extraWorkspaces = [{ ref: { key: 'w-second', hostId: 'local' }, project: { key: 'p-second' }, projectDisplayName: 'Second project', labels: [], background: false }];
+ try {
+  const h = harness(); await new Promise(r => setImmediate(r)); h.prefs.values.grouping = 'project'; h.render();
+  const move = h.nodes().find(n => n.type === 'ConversationDragProvider').props.move;
+  assert.equal(await move({ hostId: 'local', agentId: 'another' }, { hostId: 'local', groupId: null, projectKey: 'p-local', projectTitle: 'Local project' }), true);
+  assert.deepEqual(h.owner.values.groups.map(g => g.projectKey ?? g.id), ['p-local', 'p-second', 'local-folder']);
+  assert.equal(h.owner.values.assignments.at(-1).groupId, h.owner.values.groups[0].id);
+ } finally { extraWorkspaces = []; }
+});
+test('tablets in the app default to one-line titles like phones, and two lines in a narrow docked sidebar', async () => {
+ const h = harness([], { compact: false, platform: 'android' }); await new Promise(r => setImmediate(r)); h.render();
+ const titles = () => h.nodes().find(n => n.type === 'DropdownMenu').props.items.find(item => item.id === 'titles').value;
+ const layout = size => { h.nodes().find(n => n.type === 'ScrollView' && n.props.onLayout).props.onLayout({ nativeEvent: { layout: size } }); h.render(); };
+ assert.equal(titles(), 'Single line');
+ layout({ width: 240, height: 800 }); assert.equal(titles(), 'Two lines');
+ layout({ width: 320, height: 800 }); assert.equal(titles(), 'Single line');
+});
+test('a short sidebar switches default titles to one line; an explicit choice still wins', async () => {
+ const h = harness(); await new Promise(r => setImmediate(r)); h.render();
+ const titles = () => h.nodes().find(n => n.type === 'DropdownMenu').props.items.find(item => item.id === 'titles').value;
+ assert.equal(titles(), 'Two lines');
+ h.nodes().find(n => n.type === 'ScrollView' && n.props.onLayout).props.onLayout({ nativeEvent: { layout: { height: 400 } } }); h.render();
+ assert.equal(titles(), 'Single line');
+ h.nodes().find(n => n.type === 'ScrollView' && n.props.onLayout).props.onLayout({ nativeEvent: { layout: { height: 800 } } }); h.render();
+ assert.equal(titles(), 'Two lines');
 });

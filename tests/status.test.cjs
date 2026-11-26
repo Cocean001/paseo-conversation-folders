@@ -12,11 +12,12 @@ test('busy, failure, permission and completion states have distinct visible indi
   for (const state of ['running', 'initializing', 'connecting']) assert.equal(render(state).props.children.type, mod.exports.LoadingMark);
   assert.equal(render('error').props.children.props.color, 'red');
   assert.equal(render('permission').props.children.props.color, 'yellow');
-  assert.equal(render('finished').props.children.props.style.backgroundColor, 'green');
+  // A read, finished conversation needs nothing from the user, so it looks like an idle one.
+  assert.deepEqual(render('finished').props.children.props.style, render('idle').props.children.props.style);
   assert.equal(render('finished').props.accessibilityLabel, 'Completed, read');
   assert.equal(render('updated').props.children.props.style.backgroundColor, 'blue');
   assert.equal(render('updated').props.accessibilityLabel, 'Unread update');
-  assert.equal(render('idle').props.children.props.style.opacity, 0.35);
+  assert.equal(render('idle').props.children.props.style.opacity, 0.3);
 });
 
 test('button feedback responds to hover and focus but ignores disabled interactions',()=>{

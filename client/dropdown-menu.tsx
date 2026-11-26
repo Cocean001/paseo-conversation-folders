@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Animated, Modal, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import type { PluginSidebarViewProps } from '@getpaseo/plugin/client';
 import { FeedbackPressable, Glyph, useMotion } from './visuals';
+import { t } from './i18n';
 
 export interface DropdownItem {
   id: string;
@@ -88,7 +89,7 @@ export function DropdownMenu({ anchor, items, close, view, busy = false, error, 
         style={{ minHeight: rowHeight, backgroundColor: !child && submenu === item.id ? c.surface2 : undefined, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 8, opacity: item.disabled || busy ? 0.5 : 1 }}>
         {item.preview}
         {item.icon && <Glyph name={item.icon} color={c.foregroundMuted} />}
-        <Text numberOfLines={1} style={{ color: c.foreground, fontSize: 12, flex: 1 }}>{item.label}</Text>
+        <Text numberOfLines={1} style={{ color: c.foreground, fontSize: 13, flex: 1 }}>{item.label}</Text>
         {item.value && <Text numberOfLines={1} style={{ color: c.foregroundMuted, fontSize: 12, maxWidth: '55%' }}>{item.value}</Text>}
         {item.checked && <Glyph name="check" size={13} color={c.foreground} />}
         {item.items && <Glyph name="chevron" size={12} color={c.foregroundMuted} />}
@@ -105,7 +106,7 @@ export function DropdownMenu({ anchor, items, close, view, busy = false, error, 
             <FeedbackPressable theme={view.theme} onPress={() => { setSubmenu(null); activeIndex.current = parentIndex; rootRefs.current[parentIndex]?.focus(); }} accessibilityLabel="Back to view options" style={{ minHeight: rowHeight, paddingHorizontal: 10, justifyContent: 'center' }}><Text style={{ color: c.foregroundMuted, fontSize: 12 }}>‹ {parent?.label}</Text></FeedbackPressable>
             {rows(childItems, true)}
           </> : rows(items, false)}
-          {busy && <Text accessibilityLiveRegion="polite" style={{ color: c.foregroundMuted, fontSize: 11, padding: 8 }}>Saving…</Text>}
+          {busy && <Text accessibilityLiveRegion="polite" style={{ color: c.foregroundMuted, fontSize: 11, padding: 8 }}>{t('Saving…')}</Text>}
           {error && <Text accessibilityRole="alert" style={{ color: c.statusDanger, fontSize: 11, padding: 8 }}>{error}</Text>}
         </ScrollView>
       </Animated.View>

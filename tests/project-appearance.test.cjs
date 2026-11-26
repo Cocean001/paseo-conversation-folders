@@ -13,7 +13,7 @@ function harness({ groups = [], options = {}, agents = [] } = {}) {
     async save(values, revision) { calls.push({ values, revision }); this.values = values; this.revision = '2'; return true; },
   };
   const jsx = (type, props) => ({ type, props: props || {} });
-  const imports = { './folder-add':{FolderAdd:'FolderAdd'}, './web': {isSidebarDragging:()=>false}, './folder-drag': {},
+  const imports = { './i18n':{t:(s,...a)=>s.replace(/\{(\d)\}/g,(_,i)=>String(a[i])),timeLabel:s=>s,useAppLanguage(){}},'./view-state':(()=>{const open=new Map();let collapsed=false,before=new Map();const api={isOpen:(k,f)=>open.has(k)?open.get(k):f,setOpen:(k,v)=>open.set(k,v),register:()=>()=>{},showAll:()=>false,setShowAll(){},activeTab:null,setActiveTab(){},titleLines:null,setTitleLines(n){api.titleLines=n},get collapsed(){return collapsed},toggleCollapseAll(extra=[]){if(collapsed){open.clear();before.forEach((v,k)=>open.set(k,v))}else{before=new Map(open);extra.forEach(k=>open.set(k,false))}collapsed=!collapsed}};return{ViewStateProvider:'ViewStateProvider',useViewState:()=>api,useBranchOpen:(k,f=true)=>[api.isOpen(k,f),v=>api.setOpen(k,v)]}})(),'../shared/identity':{projectTile:()=>({color:'#368080',letter:'P'})}, './folder-add':{FolderAdd:'FolderAdd'}, './web': {isSidebarDragging:()=>false, touchMenu:v=>v.layout.platform!=='web'||v.layout.compact}, './folder-drag': {},
     react: {
       useState(value) { const i = cursor++; if (!(i in states)) states[i] = value; return [states[i], value => { states[i] = typeof value === 'function' ? value(states[i]) : value; }]; },
       useRef(value) { const i = cursor++; if (!(i in states)) states[i] = { current: value }; return states[i]; },
@@ -30,8 +30,8 @@ function harness({ groups = [], options = {}, agents = [] } = {}) {
     './visuals': { FeedbackPressable: 'Button', Glyph: 'Glyph' },
     './conversation-view': { useConversationView: () => ({ options, foldersForHost: () => groups, unfiledOrder: () => [] }) },
     './image-picker': { pickIconImage: async () => null },
-    './context-menu': {}, './drag-and-drop': {}, '../shared/settings': {}, '../shared/model': (()=>{const mod={exports:{}};new Function('exports',ts.transpileModule(fs.readFileSync(require.resolve('../shared/model.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText)(mod.exports);return mod.exports})(),
-    '../shared/status': { aggregateStates: () => ({ state: 'idle', hasUpdates: false }) },
+    './context-menu': {}, './drag-and-drop': {}, './touch-drag':{useTouchDrag:()=>null}, './steady':{useSteadyList:l=>l}, '../shared/activity':{timeBucket:()=>'older'}, '../shared/settings': {}, '../shared/model': (()=>{const mod={exports:{}};new Function('exports',ts.transpileModule(fs.readFileSync(require.resolve('../shared/model.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText)(mod.exports);return mod.exports})(),
+    '../shared/status': { quietSubtask: () => false, aggregateStates: () => ({ state: 'idle', hasUpdates: false }) },
     '../shared/conversations': (()=>{const mod={exports:{}};new Function('exports',ts.transpileModule(fs.readFileSync(require.resolve('../shared/conversations.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText)(mod.exports);return mod.exports})(),
   };
   const mod = { exports: {} };
@@ -59,7 +59,7 @@ function harness({ groups = [], options = {}, agents = [] } = {}) {
   const find = label => nodes().find(node => node.props?.accessibilityLabel === label);
   const button = label => nodes().find(node => node.type === 'Button' && text(node) === label);
   render();
-  const open = () => { find('Customize project ' + settings.values.projects.project.name).props.onPress(); render(); };
+  const open = () => { nodes().find(node => node.props?.onEdit).props.onEdit(); render(); };
   const setName = value => { find('Display name').props.onChangeText(value); render(); };
   const save = () => { button('Save').props.onPress(); render(); };
   return { settings, calls, render, nodes, find, button, open, setName, save, placed(){cursor=0;return mod.exports.PlacedProject({group:groups[0],groups,hostId:'local',view:{},row(){}})}, branch:()=>nodes().find(node=>node.props?.title) };

@@ -11,9 +11,9 @@ function harness(source={hostId:'local',groupId:'a'}) {
  let cursor=0,tree,component,props;const states=[],effects=[],cleanup=[],moves=[];
  const node={events:new Map(),style:{opacity:''},draggable:false,contains:()=>false,getBoundingClientRect:()=>({top:100,height:40,bottom:140}),addEventListener(type,fn){this.events.set(type,fn)},removeEventListener(type,fn){if(this.events.get(type)===fn)this.events.delete(type)}};
  const document={events:new Map(),addEventListener:node.addEventListener,removeEventListener:node.removeEventListener};node.ownerDocument=document;
- const context={current:{current:source},groups:()=>[{id:'a',name:'A',agentIds:[]},{id:'b',name:'B',agentIds:[]},{id:'child',name:'Child',parentId:'b',agentIds:[]}],async move(source,destination){moves.push({source,destination});return false}};
+ const context={current:{current:source},lit:{current:null},groups:()=>[{id:'a',name:'A',agentIds:[]},{id:'b',name:'B',agentIds:[]},{id:'child',name:'Child',parentId:'b',agentIds:[]}],async move(source,destination){moves.push({source,destination});return false}};
  const react={createContext:()=>({}),useContext:()=>context,useRef(value){const i=cursor++;if(!(i in states))states[i]={current:value};return states[i]},useState(value){const i=cursor++;if(!(i in states))states[i]=value;return[states[i],next=>states[i]=next]},useEffect(fn){const i=cursor++;if(!(i in states)){states[i]=true;effects.push(fn)}}};
- const jsx=(type,props)=>({type,props});const mod=load('../client/folder-drag.tsx',{'../shared/model':model,react,'react/jsx-runtime':{jsx,jsxs:jsx},'react-native':{View:'View',Platform:{OS:'web'}}});
+ const jsx=(type,props)=>({type,props});const mod=load('../client/folder-drag.tsx',{'./touch-drag':{useTouchDrag:()=>null},'./steady':{useSteadyControl:()=>null},'../shared/model':model,react,'react/jsx-runtime':{jsx,jsxs:jsx},'react-native':{View:'View',Platform:{OS:'web'}}});
  const render=()=>{cursor=0;tree=component(props)};
  const mount=(name,p)=>{component=mod[name];props=p;render();tree.props.ref.current=node;effects.forEach(fn=>cleanup.push(fn()))};
  const transfer={types:['application/x-paseo-sidebar-folder'],data:{},setData(type,value){this.data[type]=value},getData(type){return this.data[type]||JSON.stringify(source)}};
@@ -49,6 +49,13 @@ test('empty content always nests even near its edge, and folder drag scrolls a l
  const h=harness();const scroll={scrollHeight:1000,clientHeight:400,scrollTop:100,getBoundingClientRect:()=>({top:0,bottom:400}),parentElement:null};h.node.parentElement=scroll;
  h.mount('FolderDropTarget',{hostId:'local',group:{id:'b',name:'B',agentIds:[]},insideOnly:true,view,children:'Empty'});h.event.clientY=101;h.node.events.get('drop')(h.event);assert.equal(h.moves[0].destination.parentId,'b');assert.equal(h.moves[0].destination.position,undefined);h.cleanup();
  const long=harness();long.node.parentElement=scroll;long.mount('FolderDropTarget',{hostId:'local',root:true,view,children:'Root'});long.event.clientY=395;long.node.events.get('dragover')(long.event);assert.equal(scroll.scrollTop,112);long.cleanup();
+});
+test('a project dropped on another project, header or open list, reorders and never nests',()=>{
+ const star={id:'project:s',projectKey:'s',name:'Star',agentIds:[]},moon={id:'project:m',projectKey:'m',name:'Moon',agentIds:[]};
+ for(const [props,clientY,position] of [[{},101,'before'],[{},130,'after'],[{insideOnly:true},101,'after']]){
+  const h=harness({hostId:'local',groupId:star.id,project:star});h.mount('FolderDropTarget',{hostId:'local',group:moon,view,children:'Moon',...props});h.event.clientY=clientY;h.node.events.get('drop')(h.event);
+  assert.equal(h.moves.length,1);assert.equal(h.moves[0].destination.siblingId,moon.id);assert.equal(h.moves[0].destination.position,position);assert.equal(h.moves[0].destination.parentId,null);h.cleanup();
+ }
 });
 test('an unsaved project can receive a folder without dropping to the host instead',()=>{
  const h=harness();const project={id:'project:p',projectKey:'p',name:'Star',agentIds:[]};h.mount('FolderDropTarget',{hostId:'local',group:project,view,children:'Star'});h.node.events.get('drop')(h.event);assert.equal(h.moves[0].destination.parentId,project.id);assert.deepEqual(h.moves[0].destination.project,project);h.cleanup();

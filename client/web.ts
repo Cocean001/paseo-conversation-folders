@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { Linking, Platform } from 'react-native';
 /** Non-interactive host-document tooltip; never captures pointer or keyboard input. */
 export function showConversationTooltip(element: unknown, data: {title:string; host:string; path?:string}, colors: {surface1:string; border:string; foreground:string; foregroundMuted:string}) {
   if (Platform.OS !== 'web') return () => {};
@@ -33,8 +33,32 @@ export function showConversationTooltip(element: unknown, data: {title:string; h
   return () => {remove();observer.disconnect();browser.removeEventListener('scroll',remove,true);browser.removeEventListener('resize',remove);};
 }
 
+/** With a mouse, holding a row before moving starts a drag; a long-press menu would open first and cancel it. Right-click and the more button stay. */
+export function touchMenu(view: { layout: { platform: string; compact: boolean } }) {
+  return view.layout.platform !== 'web' || view.layout.compact;
+}
+
 /** Native drag must suppress Pressable's delayed long-press menu. */
 export function isSidebarDragging(element: unknown): boolean {
   if (Platform.OS !== 'web') return false;
   return !!(element as {ownerDocument?: {querySelector(selector: string): unknown}} | null)?.ownerDocument?.querySelector('[data-paseo-sidebar-dragging="true"]');
+}
+
+/** Transcript Search's screen with `query` filled in; Paseo's plugin routes carry screen params as `param.<name>` query keys. */
+export function transcriptSearchPath(hostId: string, query: string) {
+  return `/h/${encodeURIComponent(hostId)}/plugin/transcript-search/surface/search?param.q=${encodeURIComponent(query)}`;
+}
+
+/**
+ * Opens a Paseo route in place. shortcut: the SDK only opens this plugin's own screens, so on web and desktop this drives
+ * Paseo's router through browser history, and in the phone app it opens the app's own paseo:// link; switch to the SDK if it gains cross-plugin openScreen.
+ */
+export function openPaseoPath(path: string) {
+  const web = globalThis as unknown as { history?: { pushState(state: null, title: string, url: string): void }; dispatchEvent?(event: unknown): boolean; PopStateEvent?: new (type: string, init: { state: null }) => unknown };
+  if (web.history && web.dispatchEvent && web.PopStateEvent) {
+    web.history.pushState(null, '', path);
+    web.dispatchEvent(new web.PopStateEvent('popstate', { state: null }));
+    return;
+  }
+  void Linking.openURL(`paseo://${path}`).catch(() => {});
 }

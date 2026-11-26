@@ -1,10 +1,18 @@
 /** Presentation-only query policy shared by manual and automatic trees. */
 export type SortBy = 'activity' | 'created' | 'title' | 'manual';
 export type ConversationFilter = 'all' | 'running' | 'attention' | 'errors';
-export interface ConversationOptions { members?: readonly {hostId:string;agentId:string}[]; loadingColor?: string; collapseVersion?: number; allCollapsed?: boolean; freshFolderId?: string; loadingEffect?: 'spinner' | 'orbit' | 'pulse' | 'dots' | 'bars'; sortBy: SortBy; sortDirection: 'asc' | 'desc'; filter: ConversationFilter; search: string; workspaceKeys?: readonly string[] }
-export interface ConversationSnapshot { id: string; hostId: string; title: string | null; status: string; createdAt: string; lastActivityAt: string; requiresAttention: boolean; attentionReason: string | null; workspace?: { key: string } }
+export interface ConversationOptions { members?: readonly {hostId:string;agentId:string}[]; parents?: ReadonlySet<string>; pinned?: ReadonlySet<string>; showCounts?: boolean; loadingColor?: string; collapseVersion?: number; allCollapsed?: boolean; freshFolderId?: string; loadingEffect?: 'spinner' | 'orbit' | 'pulse' | 'dots' | 'bars'; sortBy: SortBy; sortDirection: 'asc' | 'desc'; filter: ConversationFilter; search: string; workspaceKeys?: readonly string[] }
+export interface ConversationSnapshot { id: string; hostId: string; title: string | null; status: string; createdAt: string; lastActivityAt: string; requiresAttention: boolean; attentionReason: string | null; workspace?: { key: string }; background?: boolean; parentAgent?: { key: string } | null }
 export const defaultConversationOptions: ConversationOptions = { sortBy: 'activity', sortDirection: 'desc', filter: 'all', search: '' };
+// A prompt that opens with a pasted session id would spend a whole title line on it; search still sees the full title.
+const leadingIds = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[\s,，:：;；、.。-]*)+/i;
+export const shownTitle = (title: string) => title.replace(leadingIds, '').trim() || title;
 export function matchesConversation(agent: ConversationSnapshot, options: ConversationOptions): boolean {
+  // Background agents are helpers Paseo keeps out of tabs and lists; orchestrator runs would bury real conversations.
+  if (agent.background) return false;
+  // Subtasks sit under their visible parent conversation; search and status filters still find them directly.
+  if (options.parents && agent.parentAgent && options.parents.has(agent.parentAgent.key) && !options.search.trim() && options.filter === 'all') return false;
+  if (options.pinned?.has(`${agent.hostId}:${agent.id}`) && !options.search.trim() && options.filter === 'all') return false;
   if (options.members && !options.members.some(member => member.hostId === agent.hostId && member.agentId === agent.id)) return false;
   if (options.workspaceKeys && (!agent.workspace || !options.workspaceKeys.includes(agent.workspace.key))) return false;
   if (options.search.trim() && !(agent.title || 'Untitled conversation').toLocaleLowerCase().includes(options.search.trim().toLocaleLowerCase())) return false;
@@ -13,6 +21,7 @@ export function matchesConversation(agent: ConversationSnapshot, options: Conver
   if (options.filter === 'errors') return agent.status === 'error' || agent.attentionReason === 'error';
   return true;
 }
+const isRunning = (agent: ConversationSnapshot) => agent.status === 'running' || agent.status === 'initializing';
 export function conversationOrder(options: ConversationOptions, order: readonly string[] = [], ownerHost?: string) {
   const ranks = new Map(order.map((id, index) => [id, index]));
   return (a: ConversationSnapshot, b: ConversationSnapshot): number => {
@@ -20,6 +29,13 @@ export function conversationOrder(options: ConversationOptions, order: readonly 
       const rankA = ranks.get(ownerHost ? (ownerHost === a.hostId ? a.id : `host-agent:${JSON.stringify([a.hostId, a.id])}`) : a.id) ?? Number.MAX_SAFE_INTEGER, rankB = ranks.get(ownerHost ? (ownerHost === b.hostId ? b.id : `host-agent:${JSON.stringify([b.hostId, b.id])}`) : b.id) ?? Number.MAX_SAFE_INTEGER;
       if (rankA !== rankB) return rankA - rankB;
       return a.id.localeCompare(b.id);
+    }
+    if (options.sortBy === 'activity') {
+      // A running conversation's last activity moves on every message, so several running ones would keep swapping.
+      // Running ones count as the newest activity and keep their creation order among themselves.
+      const runningA = isRunning(a), runningB = isRunning(b);
+      if (runningA !== runningB) return (runningA ? -1 : 1) * (options.sortDirection === 'desc' ? 1 : -1);
+      if (runningA) { const created = (a.createdAt || '').localeCompare(b.createdAt || ''); return (options.sortDirection === 'desc' ? -created : created) || a.id.localeCompare(b.id); }
     }
     const field = options.sortBy === 'title' ? 'title' : options.sortBy === 'created' ? 'createdAt' : 'lastActivityAt';
     const compared = (a[field] || '').localeCompare(b[field] || '', undefined, { numeric: true, sensitivity: 'base' });

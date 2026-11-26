@@ -10,3 +10,13 @@ export function activityTime(timestamp: string | null | undefined, now = Date.no
   if (seconds < 31536000) return `${Math.floor(seconds / 604800)}w`;
   return `${Math.floor(seconds / 31536000)}y`;
 }
+
+export type TimeBucket = 'today' | 'yesterday' | 'week' | 'month' | 'older';
+/** Calendar section for a timestamp in the viewer's local days: today, yesterday, then the 7 and 30 days before. */
+export function timeBucket(timestamp: string | null | undefined, now = Date.now()): TimeBucket {
+  const time = timestamp ? Date.parse(timestamp) : NaN;
+  if (!Number.isFinite(time)) return 'older';
+  const today = new Date(now); today.setHours(0, 0, 0, 0);
+  const days = (today.getTime() - time) / 86400000;
+  return days <= 0 ? 'today' : days <= 1 ? 'yesterday' : days <= 7 ? 'week' : days <= 30 ? 'month' : 'older';
+}

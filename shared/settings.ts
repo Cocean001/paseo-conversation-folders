@@ -45,6 +45,23 @@ export const projectAppearance = defineSettings({
 });
 
 
+// Per-device view state: what is folded or open on a phone should not fold the desktop. Shared structure stays in host documents.
+export const viewState = defineSettings({
+  id: 'view-state', scope: 'device', version: 1,
+  schema: z.object({
+    open: z.record(z.string(), z.boolean()).default({}),
+    showAll: z.array(z.string()).default([]),
+    activeTab: z.string().nullable().default(null),
+    titleLines: z.number().int().min(1).max(2).nullable().default(null),
+  }),
+});
+
+// Conversations pinned to the top, newest pin first. Paseo's own pin is per workspace, and one workspace can hold dozens of conversations.
+export const pinnedConversations = defineSettings({
+  id: 'pinned-conversations', scope: 'host', version: 1,
+  schema: z.object({ items: z.array(z.object({ hostId: z.string(), agentId: z.string() })).default([]) }),
+});
+
 export const sidebarTabs = defineSettings({
   id: 'sidebar-tabs', scope: 'host', version: 1,
   schema: z.object({
